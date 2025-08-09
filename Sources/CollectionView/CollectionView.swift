@@ -721,32 +721,12 @@ extension CollectionView {
 
 //MARK: - Preview
 
-@available(iOS 17.0, *)
-@Observable
-fileprivate final class ItemModel: Identifiable, Hashable, Equatable, @unchecked Sendable {
+fileprivate struct ItemModel: Identifiable, Hashable, Equatable {
     let id: Int
     var isSelected: Bool
     let isSection: Bool
-    
-    init(id: Int, isSelected: Bool = false, isSection: Bool = false) {
-        self.id = id
-        self.isSelected = isSelected
-        self.isSection = isSection
-    }
-    
-    func hash(into hasher: inout Hasher) {
-        id.hash(into: &hasher)
-        isSelected.hash(into: &hasher)
-        isSection.hash(into: &hasher)
-   }
-
-    static func == (lhs: ItemModel, rhs: ItemModel) -> Bool {
-        lhs.hashValue == rhs.hashValue
-    }
-
 }
 
-@available(iOS 17.0, *)
 fileprivate struct ListItemView: View {
     let item: ItemModel
 
@@ -762,7 +742,7 @@ fileprivate struct ListItemView: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .foregroundStyle(item.isSelected ? Color.yellow : Color.black)
+        .foregroundColor(item.isSelected ? Color.yellow : Color.black)
     }
 }
 
@@ -781,7 +761,7 @@ fileprivate struct CarouselView: View {
 fileprivate struct ListView: View {
     @State var items: [[ItemModel]] = Dictionary(grouping: 0..<100) { $0 / 10 }
         .sorted { $0.key < $1.key }
-        .map { v in v.value.map { i in ItemModel(id: i, isSection: v.value.first == i) } }
+        .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
     let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
     @State var isBusy = false
 
@@ -799,7 +779,7 @@ fileprivate struct ListView: View {
         print(items.count, "-->", count)
         let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
             .sorted { $0.key < $1.key }
-            .map { v in v.value.map { i in ItemModel(id: i, isSection: v.value.first == i) } }
+            .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
         
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         isBusy = false

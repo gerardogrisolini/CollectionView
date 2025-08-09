@@ -179,37 +179,27 @@ struct DragDropExampleView: View {
 
 ```swift
 import SwiftUI
+import Combine
+import CollectionView
 
-@available(iOS 17.0, *)
-struct ListView: View {
-    @State var items: [[ItemModel]] = Dictionary(grouping: 0..<100) { $0 / 10 }
+
+struct Item: Identifiable, Hashable, Equatable {
+    let id: Int
+    var isSelected: Bool
+    let isSection: Bool
+}
+
+struct ContentView: View {
+    @State var items: [[Item]] = Dictionary(grouping: 0..<100) { $0 / 10 }
         .sorted { $0.key < $1.key }
-        .map { v in v.value.map { i in ItemModel(id: i, isSection: v.value.first == i) } }
+        .map { v in
+            v.value.map { i in
+                Item(id: i, isSelected: false, isSection: v.value.first == i)
+            }
+        }
     let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
     @State var isBusy = false
 
-    func getIndex(_ item: ItemModel) -> IndexPath? {
-        guard let section = items.firstIndex(where: { $0.firstIndex(where: { item.id == $0.id }) != nil }) else { return nil }
-            guard let row = items[section].firstIndex(where: { item.id == $0.id }) else { return nil }
-            return .init(row: row, section: section)
-    }
-    
-    func loadMore() async {
-        guard !isBusy else { return }
-        isBusy = true
-
-        let count = items.count * 10
-        print(items.count, "-->", count)
-        let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
-            .sorted { $0.key < $1.key }
-            .map { v in v.value.map { i in ItemModel(id: i, isSection: v.value.first == i) } }
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        isBusy = false
-        
-        items.append(contentsOf: data)
-    }
-    
     var body: some View {
         VStack {
             Menu("Scroll to") {
@@ -224,9 +214,20 @@ struct ListView: View {
             CollectionView(items, scrollTo: scrollTo) { model in
                 
                 if model.id == 1 {
-                    CarouselView()
+                    CollectionView(Array(0...11), style: .carousel(layout: .three, spacing: 4)) { model in
+                        Text("Item \(model)")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
+                    }
+                    .frame(height: 300)
+                } else if model.isSection {
+                    Text("Section \(model.id.description)")
+                        .bold()
+                        .padding(10)
                 } else {
-                    ListItemView(item: model)
+                    Text("Item \(model.id.description)")
+                        .foregroundStyle(model.isSelected ? .yellow : .black)
+                        .padding(10)
                         .swipeActions(allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 guard let index = getIndex(model) else { return }
@@ -288,6 +289,28 @@ struct ListView: View {
             }
         )
         .edgesIgnoringSafeArea(.bottom)
+    }
+
+    func getIndex(_ item: Item) -> IndexPath? {
+        guard let section = items.firstIndex(where: { $0.firstIndex(where: { item.id == $0.id }) != nil }) else { return nil }
+            guard let row = items[section].firstIndex(where: { item.id == $0.id }) else { return nil }
+            return .init(row: row, section: section)
+    }
+    
+    func loadMore() async {
+        guard !isBusy else { return }
+        isBusy = true
+
+        let count = items.count * 10
+        print(items.count, "-->", count)
+        let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
+            .sorted { $0.key < $1.key }
+            .map { v in v.value.map { i in Item(id: i, isSelected: false, isSection: v.value.first == i) } }
+        
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        isBusy = false
+        
+        items.append(contentsOf: data)
     }
 }
 ```
