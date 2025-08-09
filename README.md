@@ -7,7 +7,7 @@ This library provides a seamless integration of UIKit's powerful UICollectionVie
 
 ```
 dependencies: [
-    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "1.0.0")
+    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "1.0.1")
 ]
 ```
 
