@@ -345,6 +345,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                         sectionSnapshot.append([header])
                         sectionSnapshot.append(Array(items[i][1...]), to: header)
 
+                        // Check if the header is already expanded in the current snapshot
                         if sectionIdentifiers.indices.contains(i) {
                             let snapshot = dataSource.snapshot(for: sectionIdentifiers[i])
                             if snapshot.isExpanded(header) {

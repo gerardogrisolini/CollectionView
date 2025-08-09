@@ -20,7 +20,7 @@ struct BasicExampleView: View {
     @State private var items = Array(1...20)
 
     var body: some View {
-        CollectionView(items, id: \.self) { item in
+        CollectionView(items) { item in
             Text("Elemento \(item)")
                 .frame(maxWidth: .infinity, minHeight: 56)
                 .background(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
@@ -103,7 +103,7 @@ struct EventsExampleView: View {
                     scrollTo.send(.item(IndexPath(row: 24, section: 0), position: .top))
                 }
             }
-            CollectionView(items, id: \.self, scrollTo: scrollTo) { item in
+            CollectionView(items, scrollTo: scrollTo) { item in
                 Text("Item \(item)")
                     .frame(maxWidth: .infinity, minHeight: 44)
             } onScroll: { offset in
@@ -133,7 +133,7 @@ struct RefreshLoadMoreView: View {
     }
 
     var body: some View {
-        CollectionView(data, id: \.self) { item in
+        CollectionView(data) { item in
             Text("Riga #\(item)").frame(maxWidth: .infinity, minHeight: 48)
         } pullToRefresh: {
             // fake refresh
