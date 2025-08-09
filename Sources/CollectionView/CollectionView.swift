@@ -27,7 +27,7 @@ public enum CollectionViewScrollTo {
 /// - selection, scrolling callbacks, and drag & drop
 ///
 /// Provide your items and a SwiftUI content builder to render each cell.
-public struct CollectionView<T: Hashable & Sendable>: UIViewRepresentable {
+public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hashable {
     
     public enum CollectionViewStyle {
         /// A plain list layout using `UICollectionLayoutListConfiguration`.
