@@ -55,18 +55,12 @@ import SwiftUI
 import Combine
 
 /// Example of sections + expandable headers
-final class ItemModel: Identifiable, Hashable, Equatable, @unchecked Sendable {
+struct ItemModel: Identifiable, Hashable, Equatable {
     let id: Int
-    var isSelected: Bool
     let isSection: Bool
-    init(id: Int, isSelected: Bool = false, isSection: Bool = false) {
-        self.id = id; self.isSelected = isSelected; self.isSection = isSection
-    }
-    func hash(into h: inout Hasher) { id.hash(into: &h); isSelected.hash(into: &h); isSection.hash(into: &h) }
-    static func ==(l: ItemModel, r: ItemModel) -> Bool { l.hashValue == r.hashValue }
 }
 
-struct SnapshotExampleView: View {
+struct ExpandabletExampleView: View {
     @State private var items: [[ItemModel]] = Dictionary(grouping: 0..<30) { $0 / 10 }
         .sorted { $0.key < $1.key }
         .map { v in v.value.map { i in ItemModel(id: i, isSection: v.value.first == i) } }
