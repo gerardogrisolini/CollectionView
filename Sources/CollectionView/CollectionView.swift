@@ -279,7 +279,16 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                 cellContentConfiguration(cell, view)
                 
                 // Configure accessories: disclosure for expandable nodes, reorder handle if drag is allowed.
-                guard let section = parent.data[indexPath.section].first else { return }
+                let section: T
+                if #available(iOS 15.0, *) {
+                    guard let s = dataSource.sectionIdentifier(for: indexPath.section) else { return }
+                    section = s
+                } else {
+                    let snapshot = dataSource.snapshot()
+                    guard snapshot.sectionIdentifiers.indices.contains(indexPath.section) else { return }
+                    section = snapshot.sectionIdentifiers[indexPath.section]
+                }
+                
                 let snap = dataSource.snapshot(for: section)
                 let snap2 = snap.snapshot(of: item, includingParent: false)
                 let hasChildren = snap2.items.count > 0
@@ -713,6 +722,7 @@ extension CollectionView {
 //MARK: - Preview
 
 @available(iOS 17.0, *)
+@Observable
 fileprivate final class ItemModel: Identifiable, Hashable, Equatable, @unchecked Sendable {
     let id: Int
     var isSelected: Bool
@@ -752,7 +762,7 @@ fileprivate struct ListItemView: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(item.isSelected ? Color.yellow : Color.clear)
+        .foregroundStyle(item.isSelected ? Color.yellow : Color.black)
     }
 }
 
