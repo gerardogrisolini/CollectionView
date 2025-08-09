@@ -93,7 +93,7 @@ public struct CollectionView<T: Hashable & Sendable>: UIViewRepresentable {
     ///   - canMoveItemFrom: Predicate to allow starting a drag.
     ///   - canMoveItemAt: Drop policy for drag & drop operations.
     ///   - moveItemAt: Called after the snapshot move is applied.
-    public init(
+    @MainActor public init(
         _ items: [T],
         style: CollectionViewStyle = .list,
         scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
@@ -123,7 +123,7 @@ public struct CollectionView<T: Hashable & Sendable>: UIViewRepresentable {
 
     /// Creates a multi-section collection view.
     /// - Parameters are the same as the single-section initializer, but `items` are provided per section.
-    public init(
+    @MainActor public init(
         _ items: [[T]],
         style: CollectionViewStyle = .list,
         scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
@@ -733,7 +733,6 @@ fileprivate final class ItemModel: Identifiable, Hashable, Equatable, @unchecked
     static func == (lhs: ItemModel, rhs: ItemModel) -> Bool {
         lhs.hashValue == rhs.hashValue
     }
-
 }
 
 @available(iOS 17.0, *)
