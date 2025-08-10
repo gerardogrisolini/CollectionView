@@ -328,7 +328,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
             // Section identifiers are the first element of each section.
-            let sectionData = items.map { $0.first! }
+            let sectionData = items.compactMap { $0.first }
             
             if let canExpandSectionAt = parent.canExpandSectionAt {
                                 
