@@ -173,7 +173,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         collectionView.allowsSelection = false
         collectionView.alwaysBounceVertical = true
         collectionView.showsVerticalScrollIndicator = false
-        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
         collectionView.delegate = context.coordinator
         if moveItemAt != nil {
@@ -244,7 +244,6 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             }
         }
         
-        /// Diffable data source and registrations.
         // MARK: DiffableDataSource
         
         private var dataSource: UICollectionViewDiffableDataSource<T,T>!
@@ -311,16 +310,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             if #available(iOS 16.0, *) {
                 cell.contentConfiguration = UIHostingConfiguration { item }.margins(.all, 0)
             } else {
-                let controller = UIHostingController(rootView: item)
-                cell.contentView.addSubview(controller.view)
-                controller.view.translatesAutoresizingMaskIntoConstraints = false
-                NSLayoutConstraint.activate([
-                    controller.view.leftAnchor.constraint(equalTo: cell.contentView.leftAnchor, constant: 0),
-                    controller.view.rightAnchor.constraint(equalTo: cell.contentView.rightAnchor, constant: 0),
-                    controller.view.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: 0),
-                    controller.view.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: 0),
-                ])
-                controller.view.layer.masksToBounds = true
+                cell.contentConfiguration = HostingConfiguration { item }
             }
         }
         
