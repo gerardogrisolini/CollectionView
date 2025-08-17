@@ -235,7 +235,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                     .sink { value in
                         switch value {
                         case .offset(let contentOffset):
-                            collectionView.contentOffset = contentOffset
+                            collectionView.setContentOffset(contentOffset, animated: true)
                         case .item(let indexPath, let position):
                             collectionView.scrollToItem(at: indexPath, at: position, animated: true)
                         }
@@ -317,12 +317,23 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
+            
             // Section identifiers are the first element of each section.
             let sectionData = items.compactMap { $0.first }
+
+            func cleanUp() -> [T] {
+                var snapshot = dataSource.snapshot()
+                let sectionIdentifiers = snapshot.sectionIdentifiers
+                if sectionData != sectionIdentifiers {
+                    snapshot.deleteSections(sectionIdentifiers)
+                    dataSource.apply(snapshot)
+                }
+                return sectionIdentifiers
+            }
             
             if let canExpandSectionAt = parent.canExpandSectionAt {
-                                
-                let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
+                
+                let sectionIdentifiers = cleanUp()
                 for i in sectionData.indices {
                     var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
                     let expandableSection = canExpandSectionAt(i)
@@ -348,23 +359,28 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
 
                     dataSource.apply(sectionSnapshot, to: sectionData[i])
                 }
+
+            } else if parent.moveItemAt != nil {
+                    
+                _ = cleanUp()
+                for i in sectionData.indices {
+                    var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
+                    sectionSnapshot.append(items[i])
+                    dataSource.apply(sectionSnapshot, to: sectionData[i])
+                }
                 
             } else {
                 
                 var snapshot = NSDiffableDataSourceSnapshot<T, T>()
                 snapshot.appendSections(sectionData)
-                // Single section: append all items; multi-section: skip the first element which is used as the section identifier.
-                if sectionData.count == 1 {
-                    snapshot.appendItems(items[0], toSection: sectionData[0])
-                } else {
-                    for i in sectionData.indices {
-                        snapshot.appendItems(Array(items[i][1...]), toSection: sectionData[i])
-                    }
+                for i in sectionData.indices {
+                    snapshot.appendItems(Array(items[i][1...]), toSection: sectionData[i])
                 }
                 dataSource.apply(snapshot)
                 
             }
-            print("makeSnapshot", Date())
+
+            debugPrint("makeSnapshot", Date())
         }
         
         /// Prefetch-like trigger: when near the end, call `loadMoreData` to implement infinite scrolling.
@@ -436,35 +452,31 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                 return
             }
 
+            var indexPath: IndexPath?
+            
             if let sourceId = dataSource.itemIdentifier(for: sourceIndexPath) {
                 if let destinationId = dataSource.itemIdentifier(for: destinationIndexPath) {
 
-                    var snapshot = dataSource.snapshot()
-                    guard sourceId != destinationId else {
+                    guard sourceId != destinationId,
+                        !(sourceIndexPath.section == 0 && sourceIndexPath.row == 1 && destinationIndexPath.section == 1 && destinationIndexPath.row == 0) else {
                         return // destination is same as source, no move.
                     }
+
                     // valid source and destination
-                    if sourceIndexPath.row > destinationIndexPath.row {
+                    var snapshot = dataSource.snapshot()
+                    if sourceIndexPath.row > destinationIndexPath.row || sourceIndexPath.section < destinationIndexPath.section {
                         snapshot.moveItem(sourceId, beforeItem: destinationId)
                     } else {
                         snapshot.moveItem(sourceId, afterItem: destinationId)
+                        indexPath = IndexPath(row: destinationIndexPath.row + 1, section: destinationIndexPath.section)
                     }
-                    dataSource.apply(snapshot)
-
-                } else {
-
-                    // no valid destination, eg. moving to the last row of a section
-                    var snapshot = dataSource.snapshot()
-                    snapshot.deleteItems([sourceId])
-                    let toSection = snapshot.sectionIdentifiers[destinationIndexPath.section]
-                    snapshot.appendItems([sourceId], toSection: toSection)
-                    snapshot.reloadItems([sourceId])
                     dataSource.apply(snapshot)
                 }
             }
 
             coordinator.drop(item.dragItem, toItemAt: destinationIndexPath)
-            parent.moveItemAt?(sourceIndexPath, destinationIndexPath)
+
+            parent.moveItemAt?(sourceIndexPath, indexPath ?? destinationIndexPath)
         }
     }
 
@@ -510,7 +522,7 @@ extension CollectionView {
             config.headerTopPadding = 0
         }
         // Show section headers only when multiple sections and expand/collapse are disabled.
-        config.headerMode = canExpandSectionAt == nil && data.count > 1 ? .supplementary : .none
+        config.headerMode = canExpandSectionAt == nil && data.count > 1 ? moveItemAt == nil ? .supplementary : .firstItemInSection : .none
         return UICollectionViewCompositionalLayout.list(using: config)
     }
 
@@ -767,7 +779,6 @@ fileprivate struct ListView: View {
         isBusy = true
 
         let count = items.count * 10
-        print(items.count, "-->", count)
         let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
             .sorted { $0.key < $1.key }
             .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
