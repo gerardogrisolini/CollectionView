@@ -32,18 +32,24 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
     public enum CollectionViewStyle {
         /// A plain list layout using `UICollectionLayoutListConfiguration`.
         case list
-        /// A grid-like compositional layout. Each item has a fixed `size` and the layout auto-derives the number of columns based on container width.
+        /// A collection layout with fixed item size and inter-item spacing.
         case collection(size: CGSize, spacing: CGFloat)
-        /// A horizontally scrolling carousel with a preset layout and spacing.
+        /// A grid layout with the specified number of columns, row height, and spacing.
+        case grid(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat)
+        /// A horizontally scrolling carousel with a preset layout and custom spacing.
         case carousel(layout: CarouselLayout, spacing: CGFloat)
-        /// Provide your own `UICollectionViewLayout` instance.
+        /// Use a fully custom `UICollectionViewLayout` instance provided by the caller.
         case custom(UICollectionViewLayout)
         
         /// Predefined carousel grid presets. The layout adapts to container size and orientation.
         public enum CarouselLayout {
+            /// One item per page.
             case one
+            /// Two items per page (layout adapts to orientation).
             case two
+            /// Three items per page as a 1+2 grid.
             case three
+            /// Four items per page (2x2 grid).
             case four
         }
     }
@@ -56,43 +62,43 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         case collapsed
     }
     
-    /// Backing data organized as array of sections. Single-section initializer wraps the array for you.
+    /// Data organized as an array of sections. The single-section initializer wraps automatically.
     let data: [[T]]
-    /// Visual style/configuration for the collection view.
+    /// Visual style/configuration of the collection view.
     let style: CollectionViewStyle
-    /// Builder that returns the SwiftUI view to render inside each cell.
+    /// Builder returning the SwiftUI view to display in each cell.
     let content: (T) -> any View
-    /// Async handler invoked on pull-to-refresh.
+    /// Async handler called on pull-to-refresh.
     let pullToRefresh: (() async -> Void)?
-    /// Async handler invoked while approaching the end of the content (infinite scroll).
+    /// Async handler called when approaching the end of content (infinite scroll).
     let loadMoreData: (() async -> Void)?
-    /// Callback invoked on every `scrollViewDidScroll` with current content offset.
+    /// Callback invoked on each `scrollViewDidScroll` with current content offset.
     let onScroll: ((CGPoint) -> Void)?
-    /// Query to decide whether a section can be expanded/collapsed; `nil` means no expandable sections.
+    /// Query to decide if a section can be expanded or collapsed; `nil` disables expandable sections.
     let canExpandSectionAt: ((Int) -> ExpandableSection)?
-    /// Predicate to allow starting a drag from a specific index path.
+    /// Predicate allowing the start of a drag from a given index.
     let canMoveItemFrom: ((IndexPath) -> Bool)?
     /// Policy to determine if a proposed drop is allowed and with what intent.
     let canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)?
-    /// Callback fired after a successful move within the data source.
+    /// Callback called after a move has been successfully applied in the datasource.
     let moveItemAt: ((IndexPath, IndexPath) -> Void)?
     /// Subject used to receive programmatic scroll commands.
     let scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>?
     /// Lazily created refresh control (present only if `pullToRefresh` is provided).
-    private var refreshControl: UIRefreshControl!
+    private var refreshControl: UIRefreshControl?
 
     /// Creates a single-section collection view.
     /// - Parameters:
-    ///   - items: Items for the only section.
-    ///   - style: Collection style; defaults to `.list`.
-    ///   - scrollTo: Optional subject to perform programmatic scroll.
+    ///   - items: Items for the single section.
+    ///   - style: Collection style; default is `.list`.
+    ///   - scrollTo: Optional subject for performing programmatic scrolling.
     ///   - content: SwiftUI builder for each cell.
-    ///   - pullToRefresh: Async refresh handler (shows a `UIRefreshControl`).
-    ///   - loadMoreData: Async load-more handler invoked near the bottom.
-    ///   - onScroll: Callback for scrolling updates.
-    ///   - canMoveItemFrom: Predicate to allow starting a drag.
-    ///   - canMoveItemAt: Drop policy for drag & drop operations.
-    ///   - moveItemAt: Called after the snapshot move is applied.
+    ///   - pullToRefresh: Async handler for refresh (shows a `UIRefreshControl`).
+    ///   - loadMoreData: Async handler for incremental loading near the bottom.
+    ///   - onScroll: Callback for scroll updates.
+    ///   - canMoveItemFrom: Predicate to allow drag start.
+    ///   - canMoveItemAt: Drag & drop policy.
+    ///   - moveItemAt: Called after moving in snapshot.
     public init(
         _ items: [T],
         style: CollectionViewStyle = .list,
@@ -105,22 +111,12 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
         moveItemAt: ((IndexPath, IndexPath) -> Void)? = nil)
     {
-        self.data = [items]
-        self.style = style
-        self.scrollTo = scrollTo
-        self.content = content
-        self.pullToRefresh = pullToRefresh
-        self.loadMoreData = loadMoreData
-        self.onScroll = onScroll
-        self.canExpandSectionAt = nil
-        self.canMoveItemFrom = canMoveItemFrom
-        self.canMoveItemAt = canMoveItemAt
-        self.moveItemAt = moveItemAt
-        if pullToRefresh != nil {
-            refreshControl = UIRefreshControl()
-        }
+        self.init([items], style: style, scrollTo: scrollTo, content: content,
+                  pullToRefresh: pullToRefresh, loadMoreData: loadMoreData, onScroll: onScroll,
+                  canExpandSectionAt: nil, canMoveItemFrom: canMoveItemFrom,
+                  canMoveItemAt: canMoveItemAt, moveItemAt: moveItemAt)
     }
-
+    
     /// Creates a multi-section collection view.
     /// - Parameters are the same as the single-section initializer, but `items` are provided per section.
     public init(
@@ -153,16 +149,18 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
     }
     
     /// Builds and configures the underlying `UICollectionView`.
-    /// Sets delegates, optional drag & drop, refresh control, and initial layout.
+    /// Sets delegate, optional drag & drop, refresh control, and initial layout.
     public func makeUIView(context: Context) -> UICollectionView {
 
-        // Select the appropriate compositional layout based on the requested style.
+        // Selects the appropriate compositional layout based on the requested style.
         let collectionViewLayout: UICollectionViewLayout
         switch style {
         case .list:
             collectionViewLayout = listLayout
         case .collection(let size, let spacing):
             collectionViewLayout = collectionLayout(size: size, spacing: spacing)
+        case .grid(let numOfColumns, let heightOfRow, let spacing):
+            collectionViewLayout = gridLayout(numOfColumns: numOfColumns, heightOfRow: heightOfRow, spacing: spacing)
         case .carousel(let layout, let spacing):
             collectionViewLayout = carouselLayout(layout: layout, spacing: spacing)
         case .custom(let layout):
@@ -182,7 +180,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             collectionView.dragInteractionEnabled = true
         }
         
-        if pullToRefresh != nil {
+        if let refreshControl = refreshControl {
             refreshControl.addTarget(context.coordinator, action: #selector(context.coordinator.reloadData), for: .valueChanged)
             collectionView.addSubview(refreshControl)
         }
@@ -192,14 +190,14 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         return collectionView
     }
 
-    /// Applies the latest data by rebuilding the diffable snapshot.
+    /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
         context.coordinator.makeSnapshot(items: data)
     }
 
-    /// Triggers the pull-to-refresh handler (if available) and manages the control state.
+    /// Executes the pull-to-refresh handler (if available) and manages the control state.
     func refresh() {
-        guard let pullToRefresh else { return }
+        guard let refreshControl = refreshControl, let pullToRefresh else { return }
         Task { @MainActor in
             refreshControl.beginRefreshing()
             await pullToRefresh()
@@ -207,16 +205,16 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         }
     }
     
-    /// Creates the coordinator responsible for data source, delegate and subscriptions.
+    /// Creates the coordinator responsible for datasource, delegate, and subscriptions.
     public func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
     
-    /// Coordinator bridging UIKit delegates, diffable data source, and Combine subscriptions.
+    /// Coordinator bridging UIKit delegate, diffable datasource, and Combine subscriptions.
     public class Coordinator: NSObject, UICollectionViewDelegate, UICollectionViewDragDelegate, UICollectionViewDropDelegate {
         
-        /// Combine disposables. Subscriptions auto-cancel on deinit; manual cancel is not required.
+        /// Combine dispose bag. Subscriptions auto-cancel on dealloc; manual cancellation is unnecessary.
         private var cancellables: Set<AnyCancellable> = []
         private let parent: CollectionView
         
@@ -224,11 +222,11 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             self.parent = parent
         }
         
-        /// Sets up data source, supplementary views, and subscribes to `scrollTo` commands.
+        /// Configures datasource, supplementary views, and subscribes to programmatic scroll commands.
         func configure(_ collectionView: UICollectionView) {
             configureDataSource(collectionView)
             
-            // Subscribe to programmatic scroll commands.
+            // Subscribes to programmatic scroll commands.
             if let scrollTo = parent.scrollTo {
                 scrollTo
                     .receive(on: DispatchQueue.main)
@@ -248,10 +246,10 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         
         private var dataSource: UICollectionViewDiffableDataSource<T,T>!
         
-        /// Creates cell and supplementary registrations and sets the supplementary provider when needed.
+        /// Creates registrations for cells and supplementary views and sets the provider for supplementary views if needed.
         private func configureDataSource(_ collectionView: UICollectionView) {
             
-            // Cell Registrations
+            // Cell registrations
             let cellRegistration = makeCellRegistration()
             dataSource = UICollectionViewDiffableDataSource<T, T>(collectionView: collectionView, cellProvider: { collectionView, indexPath, item in
                 collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: item)
@@ -259,7 +257,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             
             guard parent.canExpandSectionAt == nil && parent.data.count > 1 else { return }
             
-            // Supplementary registrations
+            // Supplementary view registrations
             let headerCellRegistration = makeSectionHeaderRegistration()
             dataSource.supplementaryViewProvider = { (collectionView, elementKind, indexPath) -> UICollectionReusableView? in
                 if elementKind == UICollectionView.elementKindSectionHeader {
@@ -270,14 +268,14 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             }
         }
         
-        private func makeCellRegistration() -> UICollectionView.CellRegistration<FullWidthCollectionViewCell, T> {
-            UICollectionView.CellRegistration<FullWidthCollectionViewCell, T> { [weak self] (cell, indexPath, item) in
+        private func makeCellRegistration() -> UICollectionView.CellRegistration<CustomCollectionViewCell, T> {
+            UICollectionView.CellRegistration<CustomCollectionViewCell, T> { [weak self] (cell, indexPath, item) in
                 guard let self else { return }
-                // Render the SwiftUI content into the cell using `UIHostingConfiguration` (iOS 16+) or a hosting controller.
+                // Renders SwiftUI content in the cell using `UIHostingConfiguration` (iOS 16+) or a hosting controller.
                 let view = parent.content(item)
                 cellContentConfiguration(cell, view)
                 
-                // Configure accessories: disclosure for expandable nodes, reorder handle if drag is allowed.
+                // Configures accessories: disclosure for expandable nodes, reorder handle if drag is allowed.
                 let section: T
                 if #available(iOS 15.0, *) {
                     guard let s = dataSource.sectionIdentifier(for: indexPath.section) else { return }
@@ -295,8 +293,8 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             }
         }
         
-        private func makeSectionHeaderRegistration() -> UICollectionView.SupplementaryRegistration<FullWidthCollectionViewCell> {
-            UICollectionView.SupplementaryRegistration<FullWidthCollectionViewCell>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] (cell, _, indexPath) in
+        private func makeSectionHeaderRegistration() -> UICollectionView.SupplementaryRegistration<CustomCollectionViewCell> {
+            UICollectionView.SupplementaryRegistration<CustomCollectionViewCell>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] (cell, _, indexPath) in
                 guard let self else { return }
                 let section = dataSource.snapshot().sectionIdentifiers[indexPath.section]
                 let view = parent.content(section)
@@ -304,8 +302,12 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             }
         }
         
-        private func cellContentConfiguration(_ cell: UICollectionViewListCell, _ item: some View) {
+        private func cellContentConfiguration(_ cell: CustomCollectionViewCell, _ item: some View) {
             cell.indentationLevel = 0
+            cell.withPriority = { [parent] in
+                if case .collection = parent.style { return .fittingSizeLevel }
+                else { return .required }
+            }()
 
             if #available(iOS 16.0, *) {
                 cell.contentConfiguration = UIHostingConfiguration { item }.margins(.all, 0)
@@ -379,11 +381,9 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                 dataSource.apply(snapshot)
                 
             }
-
-            debugPrint("makeSnapshot", Date())
         }
         
-        /// Prefetch-like trigger: when near the end, call `loadMoreData` to implement infinite scrolling.
+        /// Prefetch-like action: when near the end, calls `loadMoreData` to implement infinite scroll.
         public func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             guard let loadMoreData = parent.loadMoreData else { return }
             let snapshot = dataSource.snapshot()
@@ -404,14 +404,14 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
 
         // MARK: Scroll
 
-        /// Forwards scrolling updates to the SwiftUI closure.
+        /// Forwards scroll updates to the SwiftUI closure.
         public func scrollViewDidScroll(_ scrollView: UIScrollView) {
             parent.onScroll?(scrollView.contentOffset)
         }
 
         // MARK: Drag & Drop
 
-        /// Provides a local `UIDragItem` and guards the origin with `canMoveItemFrom`.
+        /// Provides a local `UIDragItem` and verifies the source with `canMoveItemFrom`.
         public func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
             if let canMoveItemFrom = parent.canMoveItemFrom {
                 guard canMoveItemFrom(indexPath) else { return [] }
@@ -423,7 +423,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             return [dragItem]
         }
 
-        /// Only allow local sessions.
+        /// Allows only local sessions.
         public func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
             session.localDragSession != nil
         }
@@ -442,7 +442,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             return canMoveItemAt(sourceDestination, destinationIndexPath)
         }
 
-        /// Applies a move in the snapshot and notifies `moveItemAt`.
+        /// Applies the move in the snapshot and notifies `moveItemAt`.
         public func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
             guard
                 let destinationIndexPath = coordinator.destinationIndexPath,
@@ -459,7 +459,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
 
                     guard sourceId != destinationId,
                         !(sourceIndexPath.section == 0 && sourceIndexPath.row == 1 && destinationIndexPath.section == 1 && destinationIndexPath.row == 0) else {
-                        return // destination is same as source, no move.
+                        return // destination equals source, no move.
                     }
 
                     // valid source and destination
@@ -480,28 +480,29 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         }
     }
 
-    /// A list cell that expands vertically to fit its SwiftUI hosted content.
-    class FullWidthCollectionViewCell: UICollectionViewListCell {
+    /// A list cell that expands vertically to fit the hosted SwiftUI content.
+    class CustomCollectionViewCell: UICollectionViewListCell {
+        
+        var withPriority: UILayoutPriority = .required
+        
         override func systemLayoutSizeFitting(
             _ targetSize: CGSize,
             withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority,
             verticalFittingPriority: UILayoutPriority
         ) -> CGSize {
 
-            // Allow Auto Layout to compute an unconstrained height based on hosted SwiftUI view.
-            // Replace the height in the target size to
-            // allow the cell to flexibly compute its height
+            // Allows Auto Layout to calculate an unbounded height based on hosted SwiftUI content.
+            // Replaces the height in the target size to enable the cell to calculate flexible height.
             var targetSize = targetSize
             targetSize.height = CGFloat.greatestFiniteMagnitude
 
-            // The .required horizontal fitting priority means
-            // the desired cell width (targetSize.width) will be
-            // preserved. However, the vertical fitting priority is
-            // .fittingSizeLevel meaning the cell will find the
-            // height that best fits the content
+            // The horizontal fitting priority .required ensures that
+            // the desired cell width (targetSize.width)
+            // is preserved. The vertical priority .fittingSizeLevel
+            // allows the cell to find the best height for the content.
             let size = super.systemLayoutSizeFitting(
                 targetSize,
-                withHorizontalFittingPriority: .required,
+                withHorizontalFittingPriority: withPriority,
                 verticalFittingPriority: .fittingSizeLevel
             )
 
@@ -521,44 +522,66 @@ extension CollectionView {
         if #available(iOS 15.0, *) {
             config.headerTopPadding = 0
         }
-        // Show section headers only when multiple sections and expand/collapse are disabled.
+        // Shows section header only if there are multiple sections and expansion is disabled.
         config.headerMode = canExpandSectionAt == nil && data.count > 1 ? moveItemAt == nil ? .supplementary : .firstItemInSection : .none
         return UICollectionViewCompositionalLayout.list(using: config)
     }
-
-    /// Grid-like compositional layout. Calculates the number of columns from container width and item width.
+    
+    /// Compositional layout of collection type.
     private func collectionLayout(size: CGSize, spacing: CGFloat) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
-            // Compute how many columns can fit while keeping the requested item width.
-            let availableWidth = environment.container.effectiveContentSize.width
-            let minItemWidth: CGFloat = size.width
-            let columns = max(Int(availableWidth / minItemWidth), 1)
-            
-            let itemSize = NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(1.0 / CGFloat(columns)),
+            let layoutSize = NSCollectionLayoutSize(
+                widthDimension: .estimated(size.width),
                 heightDimension: .absolute(size.height)
+            )
+
+            let group = NSCollectionLayoutGroup.horizontal(
+                layoutSize: .init(
+                    widthDimension: .fractionalWidth(1.0),
+                    heightDimension: layoutSize.heightDimension
+                ),
+                subitems: [.init(layoutSize: layoutSize)]
+            )
+            group.interItemSpacing = .fixed(spacing)
+
+            let section = NSCollectionLayoutSection(group: group)
+            section.contentInsets = .zero
+            section.interGroupSpacing = spacing + 2
+
+            return section
+        }
+    }
+    
+    /// Compositional grid layout.
+    private func gridLayout(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat) -> UICollectionViewLayout {
+        UICollectionViewCompositionalLayout { _, environment in
+            let itemSize = NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1.0 / CGFloat(numOfColumns)),
+                heightDimension: .absolute(heightOfRow)
             )
             let item = NSCollectionLayoutItem(layoutSize: itemSize)
             
             let groupSize = NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(1.0),
-                heightDimension: .absolute(size.height + spacing + spacing)
+                heightDimension: .absolute(heightOfRow)
             )
             let group = NSCollectionLayoutGroup.horizontal(
                 layoutSize: groupSize,
                 subitems: [item]
             )
             group.interItemSpacing = .fixed(spacing)
-            group.contentInsets = .init(top: spacing, leading: spacing, bottom: spacing, trailing: spacing)
 
-            return NSCollectionLayoutSection(group: group)
+            let section = NSCollectionLayoutSection(group: group)
+            section.contentInsets = .zero
+            section.interGroupSpacing = spacing + 2
+
+            return section
         }
     }
     
-    /// Horizontally paged carousel with presets that adapt to orientation/size class.
+    /// Horizontal carousel with paging and presets that adapt to orientation and size.
     private func carouselLayout(layout: CollectionViewStyle.CarouselLayout, spacing: CGFloat) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
-            // Choose preset and derive row/column configuration.
             let rowsWidth: NSCollectionLayoutDimension
             let rowsHeight: NSCollectionLayoutDimension
             let rowsCount: Int
@@ -594,8 +617,7 @@ extension CollectionView {
                 }
             
             case .three:
-                let isVertical = environment.container.effectiveContentSize.width < environment.container.effectiveContentSize.height
-                return threeLayout(spacing: spacing, isVertical: isVertical)
+                return threeLayout(spacing: spacing)
 
             case .four:
                 rowsCount = 2
@@ -641,81 +663,55 @@ extension CollectionView {
         }
     }
     
-    /// Specialized helper for the `.three` carousel to present a 2+1 grid that adapts to orientation.
-    private func threeLayout(spacing: CGFloat, isVertical: Bool) -> NSCollectionLayoutSection {
-        // In portrait we stack a large item on top and two items horizontally below; in landscape we place them side by side.
+    /// Specialized helper for the `.three` carousel presenting a 1+2 grid.
+    private func threeLayout(spacing: CGFloat) -> NSCollectionLayoutSection {
         let mainWidth: NSCollectionLayoutDimension
         let trailingWidth: NSCollectionLayoutDimension
         let height: NSCollectionLayoutDimension
         let trailingGroup: NSCollectionLayoutGroup
         let mainGroup: NSCollectionLayoutGroup
 
-        if isVertical {
-            mainWidth = .fractionalWidth(1)
-            trailingWidth = .fractionalWidth(0.5)
-            height = .fractionalHeight(0.5)
-        } else {
-            mainWidth = .fractionalWidth(2/3)
-            trailingWidth = .fractionalWidth(1/3)
-            height = .fractionalHeight(1.0)
-        }
-        
+        mainWidth = .fractionalWidth(2/3)
+        trailingWidth = .fractionalWidth(1/3)
+        height = .fractionalHeight(1.0)
+
         let mainItem = NSCollectionLayoutItem(
             layoutSize: NSCollectionLayoutSize(
                 widthDimension: mainWidth,
                 heightDimension: height))
         mainItem.contentInsets = NSDirectionalEdgeInsets(
             top: spacing,
-            leading: spacing,
-            bottom: spacing,
+            leading: 0,
+            bottom: 0,
             trailing: spacing)
 
         let pairItem = NSCollectionLayoutItem(
             layoutSize: NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(1.0),
-                heightDimension: .fractionalHeight(isVertical ? 1.0 : 0.5)))
+                heightDimension: .fractionalHeight(0.5)))
         pairItem.contentInsets = NSDirectionalEdgeInsets(
             top: spacing,
-            leading: spacing,
-            bottom: spacing,
-            trailing: spacing)
+            leading: 0,
+            bottom: 0,
+            trailing: 0)
 
-        if isVertical {
-            trailingGroup = NSCollectionLayoutGroup.horizontal(
-                layoutSize: NSCollectionLayoutSize(
-                    widthDimension: trailingWidth,
-                    heightDimension: height),
-                subitem: pairItem,
-                count: 2)
-            
-            mainGroup = NSCollectionLayoutGroup.vertical(
-                layoutSize: NSCollectionLayoutSize(
-                    widthDimension: .fractionalWidth(1.0),
-                    heightDimension: .fractionalHeight(1.0)),
-                subitems: [mainItem, trailingGroup])
-        } else {
-            trailingGroup = NSCollectionLayoutGroup.vertical(
-                layoutSize: NSCollectionLayoutSize(
-                    widthDimension: trailingWidth,
-                    heightDimension: height),
-                subitem: pairItem,
-                count: 2)
-            
-            mainGroup = NSCollectionLayoutGroup.horizontal(
-                layoutSize: NSCollectionLayoutSize(
-                    widthDimension: .fractionalWidth(1.0),
-                    heightDimension: .fractionalHeight(1.0)),
-                subitems: [mainItem, trailingGroup])
-        }
+        trailingGroup = NSCollectionLayoutGroup.vertical(
+            layoutSize: NSCollectionLayoutSize(
+                widthDimension: trailingWidth,
+                heightDimension: height),
+            subitem: pairItem,
+            count: 2)
 
-        mainGroup.contentInsets = NSDirectionalEdgeInsets(
-            top: spacing,
-            leading: spacing,
-            bottom: spacing,
-            trailing: spacing)
-
+        mainGroup = NSCollectionLayoutGroup.horizontal(
+            layoutSize: NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1.0),
+                heightDimension: .fractionalHeight(1.0)),
+            subitems: [mainItem, trailingGroup])
+        
         let section = NSCollectionLayoutSection(group: mainGroup)
         section.orthogonalScrollingBehavior = .groupPagingCentered
+        section.interGroupSpacing = spacing
+        section.contentInsets = .zero
 
         return section
     }
@@ -724,87 +720,29 @@ extension CollectionView {
 
 //MARK: - Preview
 
-fileprivate struct ItemModel: Identifiable, Hashable, Equatable {
-    let id: Int
-    var isSelected: Bool
-    let isSection: Bool
-}
-
-fileprivate struct ListItemView: View {
-    let item: ItemModel
-
-    var body: some View {
-        Group {
-            if item.isSection {
-                Text("Header \(item.id)")
-                    .font(.headline)
-                    .bold()
-            } else {
-                Text("Item \(item.id)")
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .foregroundColor(item.isSelected ? Color.yellow : Color.black)
-    }
-}
-
-fileprivate struct CarouselView: View {
-    var body: some View {
-        CollectionView(Array(0...11), style: .carousel(layout: .three, spacing: 4)) { model in
-            Text("Item \(model)")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
-        }
-        .frame(height: 300)
-    }
-}
-
 @available(iOS 17.0, *)
-fileprivate struct ListView: View {
-    @State var items: [[ItemModel]] = Dictionary(grouping: 0..<100) { $0 / 10 }
-        .sorted { $0.key < $1.key }
-        .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
-    let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
-    @State var isBusy = false
-
-    func getIndex(_ item: ItemModel) -> IndexPath? {
-        guard let section = items.firstIndex(where: { $0.firstIndex(where: { item.id == $0.id }) != nil }) else { return nil }
-            guard let row = items[section].firstIndex(where: { item.id == $0.id }) else { return nil }
-            return .init(row: row, section: section)
-    }
-    
-    func loadMore() async {
-        guard !isBusy else { return }
-        isBusy = true
-
-        let count = items.count * 10
-        let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
+#Preview("List") {
+    struct ListView: View {
+        
+        let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
+        @State var items: [[ItemModel]] = Dictionary(grouping: 0..<100) { $0 / 10 }
             .sorted { $0.key < $1.key }
             .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        isBusy = false
-        
-        items.append(contentsOf: data)
-    }
-    
-    var body: some View {
-        VStack {
-            Menu("Scroll to") {
-                Button("Top") { scrollTo.send(.offset(.zero)) }
-                ForEach(items.indices, id: \.self) { i in
-                    Button("Header \(items[i][0].id)") {
-                        scrollTo.send(.item(IndexPath(row: 0, section: i), position: .top))
+        @State var isBusy = false
+
+        var body: some View {
+            VStack {
+                Menu("Scroll to") {
+                    Button("Top") { scrollTo.send(.offset(.zero)) }
+                    ForEach(items.indices, id: \.self) { i in
+                        Button("Header \(items[i][0].id)") {
+                            scrollTo.send(.item(IndexPath(row: 0, section: i), position: .top))
+                        }
                     }
                 }
-            }
 
-            CollectionView(items, scrollTo: scrollTo) { model in
-                
-                if model.id == 1 {
-                    CarouselView()
-                } else {
+                CollectionView(items, scrollTo: scrollTo) { model in
+                    
                     ListItemView(item: model)
                         .swipeActions(allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -823,54 +761,134 @@ fileprivate struct ListView: View {
                             }
                             .tint(.yellow)
                         }
+
+                } pullToRefresh: {
+                    
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    
+                } loadMoreData: {
+
+                    await loadMore()
+                    
+                } onScroll: { offset in
+
+                    print(abs(offset.y))
+                    
+                } canExpandSectionAt: { section in
+
+                    section < 10 ? .expanded : section < 20 ? .collapsed : .none
+
+                } canMoveItemFrom: { from in
+
+                    from.section < 10
+                    
+                } canMoveItemAt: { from, to in
+                    
+                    guard to.section == 1 else {
+                        return .init(operation: .forbidden)
+                    }
+                    return .init(operation: .move, intent: .insertAtDestinationIndexPath)
+                    
+                } moveItemAt: { from, to in
+                    
+                    print("moveItemAt:", from, to)
+
                 }
-                
-            } pullToRefresh: {
-                
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                
-            } loadMoreData: {
-
-                await loadMore()
-                
-            } onScroll: { offset in
-
-                print(abs(offset.y))
-                
-            } canExpandSectionAt: { section in
-
-                section < 10 ? .expanded : section < 20 ? .collapsed : .none
-
-            } canMoveItemFrom: { from in
-
-                !(from.section == 0 && from.row == 1)
-                
-            } canMoveItemAt: { from, to in
-                
-                guard to.section == 1 else {
-                    return .init(operation: .forbidden)
+            }
+            .overlay(
+                Group {
+                    if isBusy {
+                        ProgressView().controlSize(.extraLarge)
+                    }
                 }
-                return .init(operation: .move, intent: .insertAtDestinationIndexPath)
-                
-            } moveItemAt: { from, to in
-                
-                print("moveItemAt:", from, to)
-                
+            )
+            .edgesIgnoringSafeArea(.bottom)
+        }
+        
+        //MARK: - Functions
+
+        private func getIndex(_ item: ItemModel) -> IndexPath? {
+            guard let section = items.firstIndex(where: { $0.firstIndex(where: { item.id == $0.id }) != nil }) else { return nil }
+                guard let row = items[section].firstIndex(where: { item.id == $0.id }) else { return nil }
+                return .init(row: row, section: section)
+        }
+        
+        private func loadMore() async {
+            guard !isBusy else { return }
+            isBusy = true
+
+            let count = items.count * 10
+            let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
+                .sorted { $0.key < $1.key }
+                .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
+            
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            isBusy = false
+            
+            items.append(contentsOf: data)
+        }
+        
+        //MARK: - Model
+
+        struct ItemModel: Identifiable, Hashable, Equatable {
+            let id: Int
+            var isSelected: Bool
+            let isSection: Bool
+        }
+
+        //MARK: - Cell
+
+        struct ListItemView: View {
+            let item: ItemModel
+
+            var body: some View {
+                Group {
+                    if item.isSection {
+                        Text("Header \(item.id)")
+                            .font(.headline)
+                            .bold()
+                    } else {
+                        Text("Item \(item.id)")
+                    }
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .foregroundColor(item.isSelected ? Color.yellow : Color.black)
             }
         }
-        .listRowInsets(.init())
-        .overlay(
-            Group {
-                if isBusy {
-                    ProgressView().controlSize(.extraLarge)
-                }
-            }
-        )
-        .edgesIgnoringSafeArea(.bottom)
     }
+
+    return ListView()
 }
 
-@available(iOS 17.0, *)
-#Preview {
-    ListView()
+#Preview("Collection") {
+    let data: [String] = [
+        "Uno", "Dueeeee", "Tre", "Quattroo", "Cinque", "Sei", "Sette", "Ottooooooo", "Nove", "Dieci"
+    ]
+    CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8)) { model in
+        Text(model)
+            .padding(.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: 50)
+            .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
+    }
+    .padding()
 }
+
+#Preview("Carousel") {
+    CollectionView(Array(0...11), style: .carousel(layout: .three, spacing: 8)) { model in
+        Text("Item \(model)")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
+    }
+    .padding()
+}
+
+#Preview("Grid") {
+    CollectionView(Array(0...30), style: .grid(numOfColumns: 3, heightOfRow: 50, spacing: 8)) { model in
+        Text("Item \(model)")
+            .frame(maxWidth: .infinity, maxHeight: 50)
+            .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
+    }
+    .padding()
+}
+
