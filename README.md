@@ -2,12 +2,22 @@
 
 This library provides a seamless integration of UIKit's powerful UICollectionView into SwiftUI, enabling developers to leverage advanced collection view features within SwiftUI applications. It bridges the gap between the two frameworks, offering flexibility and performance.
 
+## Features
+
+- List, grid, carousel, and custom layouts  
+- Diffable data source support  
+- Drag & drop support  
+- Programmatic scrolling  
+- Pull-to-refresh functionality  
+- Infinite scroll loading  
+- Expandable sections  
+- Swipe actions
 
 ## Dependencies:
 
 ```
 dependencies: [
-    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "1.0.4")
+    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "1.0.5")
 ]
 ```
 
