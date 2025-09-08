@@ -37,20 +37,20 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         /// A grid layout with the specified number of columns, row height, and spacing.
         case grid(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat)
         /// A horizontally scrolling carousel with a preset layout and custom spacing.
-        case carousel(layout: CarouselLayout, spacing: CGFloat)
+        case carousel(layout: CarouselLayout, spacing: CGFloat, pageControl: UIPageControl.BackgroundStyle? = nil, ignoreSafeArea: Bool = false)
         /// Use a fully custom `UICollectionViewLayout` instance provided by the caller.
         case custom(UICollectionViewLayout)
         
         /// Predefined carousel grid presets. The layout adapts to container size and orientation.
-        public enum CarouselLayout {
+        public enum CarouselLayout: Int {
             /// One item per page.
-            case one
+            case one = 1
             /// Two items per page (layout adapts to orientation).
-            case two
+            case two = 2
             /// Three items per page as a 1+2 grid.
-            case three
+            case three = 3
             /// Four items per page (2x2 grid).
-            case four
+            case four = 4
         }
     }
 
@@ -64,6 +64,8 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
     
     /// Data organized as an array of sections. The single-section initializer wraps automatically.
     let data: [[T]]
+    /// It has sections.
+    let hasSections: Bool
     /// Visual style/configuration of the collection view.
     let style: CollectionViewStyle
     /// Builder returning the SwiftUI view to display in each cell.
@@ -84,8 +86,6 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
     let moveItemAt: ((IndexPath, IndexPath) -> Void)?
     /// Subject used to receive programmatic scroll commands.
     let scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>?
-    /// Lazily created refresh control (present only if `pullToRefresh` is provided).
-    private var refreshControl: UIRefreshControl?
 
     /// Creates a single-section collection view.
     /// - Parameters:
@@ -111,10 +111,18 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
         moveItemAt: ((IndexPath, IndexPath) -> Void)? = nil)
     {
-        self.init([items], style: style, scrollTo: scrollTo, content: content,
-                  pullToRefresh: pullToRefresh, loadMoreData: loadMoreData, onScroll: onScroll,
-                  canExpandSectionAt: nil, canMoveItemFrom: canMoveItemFrom,
-                  canMoveItemAt: canMoveItemAt, moveItemAt: moveItemAt)
+        hasSections = false
+        self.data = [items]
+        self.style = style
+        self.scrollTo = scrollTo
+        self.content = content
+        self.pullToRefresh = pullToRefresh
+        self.loadMoreData = loadMoreData
+        self.onScroll = onScroll
+        self.canExpandSectionAt = nil
+        self.canMoveItemFrom = canMoveItemFrom
+        self.canMoveItemAt = canMoveItemAt
+        self.moveItemAt = moveItemAt
     }
     
     /// Creates a multi-section collection view.
@@ -132,6 +140,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
         moveItemAt: ((IndexPath, IndexPath) -> Void)? = nil)
     {
+        hasSections = true
         self.data = items
         self.style = style
         self.scrollTo = scrollTo
@@ -143,35 +152,44 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         self.canMoveItemFrom = canMoveItemFrom
         self.canMoveItemAt = canMoveItemAt
         self.moveItemAt = moveItemAt
-        if pullToRefresh != nil {
-            refreshControl = UIRefreshControl()
-        }
     }
     
     /// Builds and configures the underlying `UICollectionView`.
     /// Sets delegate, optional drag & drop, refresh control, and initial layout.
     public func makeUIView(context: Context) -> UICollectionView {
 
+        var ignoreSafeArea = false
         // Selects the appropriate compositional layout based on the requested style.
         let collectionViewLayout: UICollectionViewLayout
         switch style {
         case .list:
-            collectionViewLayout = listLayout
+            collectionViewLayout = context.coordinator.listLayout
         case .collection(let size, let spacing):
-            collectionViewLayout = collectionLayout(size: size, spacing: spacing)
+            collectionViewLayout = context.coordinator.collectionLayout(size: size, spacing: spacing)
         case .grid(let numOfColumns, let heightOfRow, let spacing):
-            collectionViewLayout = gridLayout(numOfColumns: numOfColumns, heightOfRow: heightOfRow, spacing: spacing)
-        case .carousel(let layout, let spacing):
-            collectionViewLayout = carouselLayout(layout: layout, spacing: spacing)
+            collectionViewLayout = context.coordinator.gridLayout(numOfColumns: numOfColumns, heightOfRow: heightOfRow, spacing: spacing)
+        case .carousel(let layout, let spacing, _, let safeArea):
+            collectionViewLayout = context.coordinator.carouselLayout(layout: layout, spacing: spacing)
+            ignoreSafeArea = safeArea
         case .custom(let layout):
             collectionViewLayout = layout
         }
-        
+
+        if pullToRefresh != nil {
+            context.coordinator.refreshControl = .init()
+        }
+
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
         collectionView.allowsSelection = false
-        collectionView.alwaysBounceVertical = true
+        collectionView.showsHorizontalScrollIndicator = false
         collectionView.showsVerticalScrollIndicator = false
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        if ignoreSafeArea, let top = UIApplication.shared.windows.first?.safeAreaInsets.top
+        {
+            collectionView.contentInset.top = -top
+            collectionView.contentInset.bottom = -top
+        }
 
         collectionView.delegate = context.coordinator
         if moveItemAt != nil {
@@ -180,29 +198,14 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             collectionView.dragInteractionEnabled = true
         }
         
-        if let refreshControl = refreshControl {
-            refreshControl.addTarget(context.coordinator, action: #selector(context.coordinator.reloadData), for: .valueChanged)
-            collectionView.addSubview(refreshControl)
-        }
-        
         context.coordinator.configure(collectionView)
         
         return collectionView
     }
-
+    
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
         context.coordinator.makeSnapshot(items: data)
-    }
-
-    /// Executes the pull-to-refresh handler (if available) and manages the control state.
-    func refresh() {
-        guard let refreshControl = refreshControl, let pullToRefresh else { return }
-        Task { @MainActor in
-            refreshControl.beginRefreshing()
-            await pullToRefresh()
-            refreshControl.endRefreshing()
-        }
     }
     
     /// Creates the coordinator responsible for datasource, delegate, and subscriptions.
@@ -216,15 +219,22 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         
         /// Combine dispose bag. Subscriptions auto-cancel on dealloc; manual cancellation is unnecessary.
         private var cancellables: Set<AnyCancellable> = []
+        /// Parent
         private let parent: CollectionView
+        /// Lazily created refresh control (present only if `pullToRefresh` is provided).
+        var refreshControl: UIRefreshControl?
+        /// Lazily created page control (present only if `pageControl` is provided).
+        var pageControl: UIPageControl?
         
         init(_ parent: CollectionView) {
             self.parent = parent
         }
-        
+
         /// Configures datasource, supplementary views, and subscribes to programmatic scroll commands.
         func configure(_ collectionView: UICollectionView) {
             configureDataSource(collectionView)
+            addRefreshControl(to: collectionView)
+            addPageControl(to: collectionView)
             
             // Subscribes to programmatic scroll commands.
             if let scrollTo = parent.scrollTo {
@@ -242,6 +252,38 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             }
         }
         
+        private func addRefreshControl(to collectionView: UICollectionView) {
+            guard let refreshControl = refreshControl else { return }
+
+            refreshControl.addTarget(self, action: #selector(reloadData), for: .valueChanged)
+            collectionView.addSubview(refreshControl)
+        }
+        
+        private func addPageControl(to collectionView: UICollectionView) {
+            guard case let .carousel(layout, _, pageControlStyle, safeArea) = parent.style, let pageControlStyle else { return }
+
+            let totalItems = parent.data.first?.count ?? 1
+            let x = totalItems.isMultiple(of: layout.rawValue) ? 0 : 1
+            let pages = max(1, (totalItems / layout.rawValue) + x)
+
+            let pc = UIPageControl()
+            pc.translatesAutoresizingMaskIntoConstraints = false
+            pc.isUserInteractionEnabled = false
+            pc.hidesForSinglePage = true
+            pc.numberOfPages = pages
+            pc.currentPage = 0
+            pc.backgroundStyle = pageControlStyle
+            collectionView.addSubview(pc)
+            collectionView.bringSubviewToFront(pc)
+            NSLayoutConstraint.activate([
+                pc.centerXAnchor.constraint(equalTo: collectionView.centerXAnchor),
+                pc.bottomAnchor.constraint(equalTo: collectionView.safeAreaLayoutGuide.bottomAnchor, constant: safeArea ? 0 : -16)
+            ])
+            
+            self.pageControl = pc
+        }
+
+
         // MARK: DiffableDataSource
         
         private var dataSource: UICollectionViewDiffableDataSource<T,T>!
@@ -375,11 +417,17 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                 
                 var snapshot = NSDiffableDataSourceSnapshot<T, T>()
                 snapshot.appendSections(sectionData)
-                for i in sectionData.indices {
-                    snapshot.appendItems(Array(items[i][1...]), toSection: sectionData[i])
+                if parent.hasSections {
+                    for i in sectionData.indices {
+                        snapshot.appendItems(Array(items[i][1...]), toSection: sectionData[i])
+                    }
+                } else {
+                    for i in sectionData.indices {
+                        snapshot.appendItems(items[i], toSection: sectionData[i])
+                    }
                 }
                 dataSource.apply(snapshot)
-                
+
             }
         }
         
@@ -395,19 +443,27 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
             }
         }
 
+        
         // MARK: PullToRefresh
 
         /// Called by the refresh control to execute the async refresh handler.
         @objc func reloadData() {
-            parent.refresh()
+            guard let refreshControl = refreshControl else { return }
+            Task { @MainActor in
+                refreshControl.beginRefreshing()
+                await parent.pullToRefresh?()
+                refreshControl.endRefreshing()
+            }
         }
 
+        
         // MARK: Scroll
 
         /// Forwards scroll updates to the SwiftUI closure.
         public func scrollViewDidScroll(_ scrollView: UIScrollView) {
             parent.onScroll?(scrollView.contentOffset)
         }
+        
 
         // MARK: Drag & Drop
 
@@ -505,7 +561,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                 withHorizontalFittingPriority: withPriority,
                 verticalFittingPriority: .fittingSizeLevel
             )
-
+            
             return size
         }
     }
@@ -513,22 +569,22 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
 
 //MARK: - CompositionalLayout
 
-extension CollectionView {
+extension CollectionView.Coordinator {
 
     /// List appearance using `UICollectionLayoutListConfiguration`.
-    private var listLayout: UICollectionViewLayout {
+    var listLayout: UICollectionViewLayout {
         var config = UICollectionLayoutListConfiguration(appearance: .plain)
         config.showsSeparators = false
         if #available(iOS 15.0, *) {
             config.headerTopPadding = 0
         }
         // Shows section header only if there are multiple sections and expansion is disabled.
-        config.headerMode = canExpandSectionAt == nil && data.count > 1 ? moveItemAt == nil ? .supplementary : .firstItemInSection : .none
+        config.headerMode = parent.canExpandSectionAt == nil && parent.data.count > 1 ? parent.moveItemAt == nil ? .supplementary : .firstItemInSection : .none
         return UICollectionViewCompositionalLayout.list(using: config)
     }
     
     /// Compositional layout of collection type.
-    private func collectionLayout(size: CGSize, spacing: CGFloat) -> UICollectionViewLayout {
+    func collectionLayout(size: CGSize, spacing: CGFloat) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
             let layoutSize = NSCollectionLayoutSize(
                 widthDimension: .estimated(size.width),
@@ -553,7 +609,7 @@ extension CollectionView {
     }
     
     /// Compositional grid layout.
-    private func gridLayout(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat) -> UICollectionViewLayout {
+    func gridLayout(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
             let itemSize = NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(1.0 / CGFloat(numOfColumns)),
@@ -580,7 +636,7 @@ extension CollectionView {
     }
     
     /// Horizontal carousel with paging and presets that adapt to orientation and size.
-    private func carouselLayout(layout: CollectionViewStyle.CarouselLayout, spacing: CGFloat) -> UICollectionViewLayout {
+    func carouselLayout(layout: CollectionView.CollectionViewStyle.CarouselLayout, spacing: CGFloat) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
             let rowsWidth: NSCollectionLayoutDimension
             let rowsHeight: NSCollectionLayoutDimension
@@ -604,7 +660,7 @@ extension CollectionView {
                     rowsCount = 2
                     columnsCount = 1
                     rowsWidth = .fractionalWidth(1.0)
-                    rowsHeight = .fractionalHeight(0.5)
+                    rowsHeight = .fractionalHeight(1.0)
                     columnsWidth = .fractionalWidth(1.0)
                     columnsHeight = .fractionalHeight(1.0)
                 } else {
@@ -617,7 +673,7 @@ extension CollectionView {
                 }
             
             case .three:
-                return threeLayout(spacing: spacing)
+                return self.threeLayout(spacing: spacing, environment: environment)
 
             case .four:
                 rowsCount = 2
@@ -658,13 +714,17 @@ extension CollectionView {
           
             let section = NSCollectionLayoutSection(group: group)
             section.orthogonalScrollingBehavior = .groupPagingCentered
-
+            section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
+                let page = round(offset.x / env.container.effectiveContentSize.width)
+                self?.pageControl?.currentPage = Int(page)
+            }
+            
             return section
         }
     }
     
     /// Specialized helper for the `.three` carousel presenting a 1+2 grid.
-    private func threeLayout(spacing: CGFloat) -> NSCollectionLayoutSection {
+    func threeLayout(spacing: CGFloat, environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
         let mainWidth: NSCollectionLayoutDimension
         let trailingWidth: NSCollectionLayoutDimension
         let height: NSCollectionLayoutDimension
@@ -712,6 +772,10 @@ extension CollectionView {
         section.orthogonalScrollingBehavior = .groupPagingCentered
         section.interGroupSpacing = spacing
         section.contentInsets = .zero
+        section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
+            let page = round(offset.x / env.container.effectiveContentSize.width)
+            self?.pageControl?.currentPage = Int(page)
+        }
 
         return section
     }
@@ -875,16 +939,17 @@ extension CollectionView {
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(0...11), style: .carousel(layout: .three, spacing: 8)) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .three, spacing: 10, pageControl: .prominent)) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
     }
+    .frame(height: 300)
     .padding()
 }
 
 #Preview("Grid") {
-    CollectionView(Array(0...30), style: .grid(numOfColumns: 3, heightOfRow: 50, spacing: 8)) { model in
+    CollectionView(Array(1...30), style: .grid(numOfColumns: 3, heightOfRow: 50, spacing: 8)) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: 50)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
