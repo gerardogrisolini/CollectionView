@@ -11,7 +11,12 @@ import Combine
 
 extension CollectionView {
 
-    /// Coordinator bridging UIKit delegate, diffable datasource, and Combine subscriptions.
+    /// A UIKit bridge for `CollectionView` that coordinates:
+    /// - UICollectionView delegate callbacks (scrolling, drag & drop)
+    /// - Diffable data source and section snapshots (including expandable sections)
+    /// - Combine subscriptions for programmatic scrolling
+    /// - Optional UI components such as `UIRefreshControl` (pull‑to‑refresh) and `UIPageControl` (carousel pagination)
+
     public class Coordinator: NSObject, UICollectionViewDelegate, UICollectionViewDragDelegate, UICollectionViewDropDelegate {
         
         /// Combine dispose bag. Subscriptions auto-cancel on dealloc; manual cancellation is unnecessary.
@@ -37,7 +42,8 @@ extension CollectionView {
             if let scrollTo = parent.scrollTo {
                 scrollTo
                     .receive(on: DispatchQueue.main)
-                    .sink { value in
+                    .sink { [weak collectionView] value in
+                        guard let collectionView else { return }
                         switch value {
                         case .offset(let contentOffset):
                             collectionView.setContentOffset(contentOffset, animated: true)
@@ -51,9 +57,8 @@ extension CollectionView {
         
         private func addRefreshControl(to collectionView: UICollectionView) {
             guard let refreshControl = refreshControl else { return }
-
             refreshControl.addTarget(self, action: #selector(reloadData), for: .valueChanged)
-            collectionView.addSubview(refreshControl)
+            collectionView.refreshControl = refreshControl
         }
         
         private func addPageControl(to collectionView: UICollectionView) {
@@ -151,7 +156,7 @@ extension CollectionView {
             if #available(iOS 16.0, *) {
                 cell.contentConfiguration = UIHostingConfiguration { item }.margins(.all, 0)
             } else {
-                cell.contentConfiguration = HostingConfiguration { item }
+                cell.contentConfiguration = HostingConfiguration { item }.margins(.zero)
             }
             cell.backgroundConfiguration = .clear()
         }
@@ -159,7 +164,6 @@ extension CollectionView {
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
-            
             // Section identifiers are the first element of each section.
             let sectionData = items.compactMap { $0.first }
 
@@ -228,7 +232,7 @@ extension CollectionView {
 
             }
         }
-        
+
         /// Prefetch-like action: when near the end, calls `loadMoreData` to implement infinite scroll.
         public func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             guard let loadMoreData = parent.loadMoreData else { return }

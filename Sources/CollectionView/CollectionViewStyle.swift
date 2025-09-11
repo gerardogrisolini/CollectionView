@@ -11,7 +11,7 @@ public enum CollectionViewStyle {
     /// A plain list layout using `UICollectionLayoutListConfiguration`.
     case list
     /// A collection layout with fixed item size and inter-item spacing.
-    case collection(size: CGSize, spacing: CGFloat)
+    case collection(size: CGSize, spacing: CGFloat, direction: UICollectionView.ScrollDirection = .vertical)
     /// A grid layout with the specified number of columns, row height, and spacing.
     case grid(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat)
     /// A horizontally scrolling carousel with a preset layout and custom spacing.

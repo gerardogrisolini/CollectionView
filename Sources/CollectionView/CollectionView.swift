@@ -309,11 +309,22 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
     let data: [String] = [
         "Uno", "Dueeeee", "Tre", "Quattroo", "Cinque", "Sei", "Sette", "Ottooooooo", "Nove", "Dieci"
     ]
-    CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8)) { model in
-        Text(model)
-            .padding(.horizontal)
-            .frame(maxWidth: .infinity, maxHeight: 50)
-            .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
+    
+    VStack(spacing: 50) {
+        CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8, direction: .horizontal)) { model in
+            Text(model.description)
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, maxHeight: 50)
+                .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
+        }
+        .frame(height: 60)
+
+        CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8)) { model in
+            Text(model)
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, maxHeight: 50)
+                .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
+        }
     }
     .padding()
 }

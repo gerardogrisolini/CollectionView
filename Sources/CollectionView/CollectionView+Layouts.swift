@@ -13,8 +13,8 @@ extension CollectionView.Coordinator {
         switch style {
         case .list:
             return listLayout
-        case .collection(let size, let spacing):
-            return collectionLayout(size: size, spacing: spacing)
+        case .collection(let size, let spacing, let direction):
+            return collectionLayout(size: size, spacing: spacing, direction: direction)
         case .grid(let numOfColumns, let heightOfRow, let spacing):
             return gridLayout(numOfColumns: numOfColumns, heightOfRow: heightOfRow, spacing: spacing)
         case .carousel(let layout, let spacing, _, _):
@@ -37,8 +37,17 @@ extension CollectionView.Coordinator {
     }
     
     /// Compositional layout of collection type.
-    private func collectionLayout(size: CGSize, spacing: CGFloat) -> UICollectionViewLayout {
-        UICollectionViewCompositionalLayout { _, environment in
+    private func collectionLayout(size: CGSize, spacing: CGFloat, direction: UICollectionView.ScrollDirection) -> UICollectionViewLayout {
+        guard direction == .vertical else {
+            let flow = UICollectionViewFlowLayout()
+            flow.scrollDirection = .horizontal
+            flow.estimatedItemSize = size
+            flow.minimumInteritemSpacing = spacing
+            flow.minimumLineSpacing = spacing
+            return flow
+        }
+
+        return UICollectionViewCompositionalLayout { _, environment in
             let layoutSize = NSCollectionLayoutSize(
                 widthDimension: .estimated(size.width),
                 heightDimension: .absolute(size.height)
@@ -55,7 +64,7 @@ extension CollectionView.Coordinator {
 
             let section = NSCollectionLayoutSection(group: group)
             section.contentInsets = .zero
-            section.interGroupSpacing = spacing + 2
+            section.interGroupSpacing = spacing
 
             return section
         }

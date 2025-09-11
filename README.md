@@ -17,7 +17,7 @@ This library provides a seamless integration of UIKit's powerful UICollectionVie
 
 ```
 dependencies: [
-    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "1.0.6")
+    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "1.0.7")
 ]
 ```
 
@@ -242,7 +242,6 @@ struct ContentView: View {
                 
             }
         }
-        .listRowInsets(.init())
         .overlay(
             Group {
                 if isBusy {
