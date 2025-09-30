@@ -44,6 +44,7 @@ extension CollectionView.Coordinator {
             flow.estimatedItemSize = size
             flow.minimumInteritemSpacing = spacing
             flow.minimumLineSpacing = spacing
+            flow.sectionInset = .init(top: 0, left: spacing, bottom: 0, right: spacing)
             return flow
         }
 
@@ -63,7 +64,7 @@ extension CollectionView.Coordinator {
             group.interItemSpacing = .fixed(spacing)
 
             let section = NSCollectionLayoutSection(group: group)
-            section.contentInsets = .zero
+            section.contentInsets = .init(top: 0, leading: spacing, bottom: 0, trailing: spacing)
             section.interGroupSpacing = spacing
 
             return section
@@ -176,9 +177,11 @@ extension CollectionView.Coordinator {
           
             let section = NSCollectionLayoutSection(group: group)
             section.orthogonalScrollingBehavior = .groupPagingCentered
+            section.contentInsets = .init(top: 0, leading: spacing, bottom: 0, trailing: spacing)
             section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
                 let page = round(offset.x / env.container.effectiveContentSize.width)
                 self?.pageControl?.currentPage = Int(page)
+                self?.parent.onScroll?(offset)
             }
             
             return section
@@ -203,7 +206,7 @@ extension CollectionView.Coordinator {
                 heightDimension: height))
         mainItem.contentInsets = NSDirectionalEdgeInsets(
             top: spacing,
-            leading: 0,
+            leading: spacing,
             bottom: 0,
             trailing: spacing)
 
@@ -215,7 +218,7 @@ extension CollectionView.Coordinator {
             top: spacing,
             leading: 0,
             bottom: 0,
-            trailing: 0)
+            trailing: spacing)
 
         trailingGroup = NSCollectionLayoutGroup.vertical(
             layoutSize: NSCollectionLayoutSize(
@@ -233,10 +236,10 @@ extension CollectionView.Coordinator {
         let section = NSCollectionLayoutSection(group: mainGroup)
         section.orthogonalScrollingBehavior = .groupPagingCentered
         section.interGroupSpacing = spacing
-        section.contentInsets = .zero
         section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
             let page = round(offset.x / env.container.effectiveContentSize.width)
             self?.pageControl?.currentPage = Int(page)
+            self?.parent.onScroll?(offset)
         }
 
         return section

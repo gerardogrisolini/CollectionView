@@ -20,7 +20,7 @@ import Combine
 /// - selection, scrolling callbacks, and drag & drop
 ///
 /// Provide your items and a SwiftUI content builder to render each cell.
-public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hashable {
+@MainActor public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Sendable {
     
     /// Data organized as an array of sections. The single-section initializer wraps automatically.
     let data: [[T]]
@@ -34,6 +34,8 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
     let pullToRefresh: (() async -> Void)?
     /// Async handler called when approaching the end of content (infinite scroll).
     let loadMoreData: (() async -> Void)?
+    /// Callback invoked on item tapped
+    let onItemTap: ((T) -> Void)?
     /// Callback invoked on each `scrollViewDidScroll` with current content offset.
     let onScroll: ((CGPoint) -> Void)?
     /// Query to decide if a section can be expanded or collapsed; `nil` disables expandable sections.
@@ -66,6 +68,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         @ViewBuilder content: @escaping (T) -> any View,
         pullToRefresh: (() async -> Void)? = nil,
         loadMoreData: (() async -> Void)? = nil,
+        onItemTap: ((T) -> Void)? = nil,
         onScroll: ((CGPoint) -> Void)? = nil,
         canMoveItemFrom: ((IndexPath) -> Bool)? = nil,
         canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
@@ -78,6 +81,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         self.content = content
         self.pullToRefresh = pullToRefresh
         self.loadMoreData = loadMoreData
+        self.onItemTap = onItemTap
         self.onScroll = onScroll
         self.canExpandSectionAt = nil
         self.canMoveItemFrom = canMoveItemFrom
@@ -94,6 +98,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         @ViewBuilder content: @escaping (T) -> any View,
         pullToRefresh: (() async -> Void)? = nil,
         loadMoreData: (() async -> Void)? = nil,
+        onItemTap: ((T) -> Void)? = nil,
         onScroll: ((CGPoint) -> Void)? = nil,
         canExpandSectionAt: ((Int) -> ExpandableSection)? = nil,
         canMoveItemFrom: ((IndexPath) -> Bool)? = nil,
@@ -107,6 +112,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         self.content = content
         self.pullToRefresh = pullToRefresh
         self.loadMoreData = loadMoreData
+        self.onItemTap = onItemTap
         self.onScroll = onScroll
         self.canExpandSectionAt = canExpandSectionAt
         self.canMoveItemFrom = canMoveItemFrom
@@ -122,7 +128,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         let collectionViewLayout = context.coordinator.makeLayout(style: style)
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
-        collectionView.allowsSelection = false
+        collectionView.allowsSelection = onItemTap != nil
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.showsVerticalScrollIndicator = false
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -146,7 +152,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
         }
         
         context.coordinator.configure(collectionView)
-        
+
         return collectionView
     }
     
@@ -326,17 +332,15 @@ public struct CollectionView<T>: UIViewRepresentable where T: Sendable, T: Hasha
                 .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
         }
     }
-    .padding()
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .three, spacing: 10, pageControl: .prominent)) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .four, spacing: 10, pageControl: .prominent)) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
     }
     .frame(height: 300)
-    .padding()
 }
 
 #Preview("Grid") {

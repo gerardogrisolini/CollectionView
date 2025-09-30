@@ -160,10 +160,26 @@ extension CollectionView {
             }
             cell.backgroundConfiguration = .clear()
         }
+
+        var lastSnapshotDate: String? = nil
         
+        func timestamp() -> String {
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            dateFormatter.dateFormat = "mmss.S"
+            return String(format: "%@", dateFormatter.string(from: Date()))
+        }
+    
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
+
+            let snapshotDate = timestamp()
+            guard lastSnapshotDate != snapshotDate else { return }
+            lastSnapshotDate = snapshotDate
+
+            debugPrint("makeSnapshot:", snapshotDate, lastSnapshotDate, parent.style)
+
             // Section identifiers are the first element of each section.
             let sectionData = items.compactMap { $0.first }
 
@@ -264,6 +280,15 @@ extension CollectionView {
         /// Forwards scroll updates to the SwiftUI closure.
         public func scrollViewDidScroll(_ scrollView: UIScrollView) {
             parent.onScroll?(scrollView.contentOffset)
+        }
+        
+
+        // MARK: ItemTap
+
+        public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+            let snapshot = dataSource.snapshot()
+            let item = snapshot.itemIdentifiers(inSection: snapshot.sectionIdentifiers[indexPath.section])[indexPath.row]
+            parent.onItemTap?(item)
         }
         
 
