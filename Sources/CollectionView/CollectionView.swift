@@ -28,6 +28,8 @@ import Combine
     let hasSections: Bool
     /// Visual style/configuration of the collection view.
     let style: CollectionViewStyle
+    /// Content inset
+    let contentInset: UIEdgeInsets
     /// Builder returning the SwiftUI view to display in each cell.
     let content: (T) -> any View
     /// Async handler called on pull-to-refresh.
@@ -64,6 +66,7 @@ import Combine
     public init(
         _ items: [T],
         style: CollectionViewStyle = .list,
+        contentInset: UIEdgeInsets = .zero,
         scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
         @ViewBuilder content: @escaping (T) -> any View,
         pullToRefresh: (() async -> Void)? = nil,
@@ -77,6 +80,7 @@ import Combine
         hasSections = false
         self.data = [items]
         self.style = style
+        self.contentInset = contentInset
         self.scrollTo = scrollTo
         self.content = content
         self.pullToRefresh = pullToRefresh
@@ -94,6 +98,7 @@ import Combine
     public init(
         _ items: [[T]],
         style: CollectionViewStyle = .list,
+        contentInset: UIEdgeInsets = .zero,
         scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
         @ViewBuilder content: @escaping (T) -> any View,
         pullToRefresh: (() async -> Void)? = nil,
@@ -108,6 +113,7 @@ import Combine
         hasSections = true
         self.data = items
         self.style = style
+        self.contentInset = contentInset
         self.scrollTo = scrollTo
         self.content = content
         self.pullToRefresh = pullToRefresh
@@ -133,6 +139,8 @@ import Combine
         collectionView.showsVerticalScrollIndicator = false
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
+        collectionView.contentInset = contentInset
+        //collectionView.bounces = false
         
         if case .carousel(_, _, _, let ignoreSafeArea) = style, ignoreSafeArea, let top = UIApplication.shared.windows.first?.safeAreaInsets.top
         {
@@ -335,7 +343,7 @@ import Combine
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .four, spacing: 10, pageControl: .prominent)) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .two, spacing: 10, pageControl: .prominent)) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
@@ -349,6 +357,5 @@ import Combine
             .frame(maxWidth: .infinity, maxHeight: 50)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
     }
-    .padding()
 }
 
