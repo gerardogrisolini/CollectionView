@@ -14,6 +14,11 @@ extension CollectionView {
         
         var withPriority: UILayoutPriority = .required
         
+        override func prepareForReuse() {
+            super.prepareForReuse()
+            backgroundColor = .clear
+        }
+        
         override func systemLayoutSizeFitting(
             _ targetSize: CGSize,
             withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority,

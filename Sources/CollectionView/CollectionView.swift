@@ -30,6 +30,8 @@ import Combine
     let style: CollectionViewStyle
     /// Content inset
     let contentInset: UIEdgeInsets
+    /// Animating differences
+    let animatingDifferences: Bool
     /// Builder returning the SwiftUI view to display in each cell.
     let content: (T) -> any View
     /// Async handler called on pull-to-refresh.
@@ -67,6 +69,7 @@ import Combine
         _ items: [T],
         style: CollectionViewStyle = .list,
         contentInset: UIEdgeInsets = .zero,
+        animatingDifferences: Bool = true,
         scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
         @ViewBuilder content: @escaping (T) -> any View,
         pullToRefresh: (() async -> Void)? = nil,
@@ -81,6 +84,7 @@ import Combine
         self.data = [items]
         self.style = style
         self.contentInset = contentInset
+        self.animatingDifferences = animatingDifferences
         self.scrollTo = scrollTo
         self.content = content
         self.pullToRefresh = pullToRefresh
@@ -99,6 +103,7 @@ import Combine
         _ items: [[T]],
         style: CollectionViewStyle = .list,
         contentInset: UIEdgeInsets = .zero,
+        animatingDifferences: Bool = true,
         scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
         @ViewBuilder content: @escaping (T) -> any View,
         pullToRefresh: (() async -> Void)? = nil,
@@ -114,6 +119,7 @@ import Combine
         self.data = items
         self.style = style
         self.contentInset = contentInset
+        self.animatingDifferences = animatingDifferences
         self.scrollTo = scrollTo
         self.content = content
         self.pullToRefresh = pullToRefresh

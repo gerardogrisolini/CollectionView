@@ -32,7 +32,7 @@ extension CollectionView.Coordinator {
             config.headerTopPadding = 0
         }
         // Shows section header only if there are multiple sections and expansion is disabled.
-        config.headerMode = parent.canExpandSectionAt == nil && parent.data.count > 1 ? parent.moveItemAt == nil ? .supplementary : .firstItemInSection : .none
+        config.headerMode = parent.canExpandSectionAt == nil && parent.hasSections ? parent.moveItemAt == nil ? .supplementary : .firstItemInSection : .none
         return UICollectionViewCompositionalLayout.list(using: config)
     }
     

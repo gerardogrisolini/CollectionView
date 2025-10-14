@@ -99,7 +99,7 @@ extension CollectionView {
                 collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: item)
             })
             
-            guard parent.canExpandSectionAt == nil && parent.data.count > 1 else { return }
+            guard parent.hasSections && parent.canExpandSectionAt == nil && parent.moveItemAt == nil else { return }
             
             // Supplementary view registrations
             let headerCellRegistration = makeSectionHeaderRegistration()
@@ -161,24 +161,24 @@ extension CollectionView {
             cell.backgroundConfiguration = .clear()
         }
 
-        var lastSnapshotDate: String? = nil
-        
-        func timestamp() -> String {
-            let dateFormatter = DateFormatter()
-            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-            dateFormatter.dateFormat = "mmss.S"
-            return String(format: "%@", dateFormatter.string(from: Date()))
-        }
+//        var lastSnapshotDate: String? = nil
+//        
+//        func timestamp() -> String {
+//            let dateFormatter = DateFormatter()
+//            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+//            dateFormatter.dateFormat = "mmss"
+//            return String(format: "%@", dateFormatter.string(from: Date()))
+//        }
     
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
-
-            let snapshotDate = timestamp()
-            guard lastSnapshotDate != snapshotDate else { return }
-            lastSnapshotDate = snapshotDate
-
-            debugPrint("makeSnapshot:", snapshotDate, lastSnapshotDate, parent.style)
+            let animatingDifferences = parent.animatingDifferences
+            
+//            let snapshotDate = timestamp()
+//            guard lastSnapshotDate != snapshotDate else { return }
+//            lastSnapshotDate = snapshotDate
+//            debugPrint("makeSnapshot:", snapshotDate, lastSnapshotDate, parent.style)
 
             // Section identifiers are the first element of each section.
             let sectionData = items.compactMap { $0.first }
@@ -188,7 +188,7 @@ extension CollectionView {
                 let sectionIdentifiers = snapshot.sectionIdentifiers
                 if sectionData != sectionIdentifiers {
                     snapshot.deleteSections(sectionIdentifiers)
-                    dataSource.apply(snapshot)
+                    dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
                 }
                 return sectionIdentifiers
             }
@@ -219,7 +219,7 @@ extension CollectionView {
                         }
                     }
 
-                    dataSource.apply(sectionSnapshot, to: sectionData[i])
+                    dataSource.apply(sectionSnapshot, to: sectionData[i], animatingDifferences: animatingDifferences)
                 }
 
             } else if parent.moveItemAt != nil {
@@ -228,7 +228,7 @@ extension CollectionView {
                 for i in sectionData.indices {
                     var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
                     sectionSnapshot.append(items[i])
-                    dataSource.apply(sectionSnapshot, to: sectionData[i])
+                    dataSource.apply(sectionSnapshot, to: sectionData[i], animatingDifferences: animatingDifferences)
                 }
                 
             } else {
@@ -244,7 +244,7 @@ extension CollectionView {
                         snapshot.appendItems(items[i], toSection: sectionData[i])
                     }
                 }
-                dataSource.apply(snapshot)
+                dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
 
             }
         }
@@ -255,7 +255,8 @@ extension CollectionView {
             let snapshot = dataSource.snapshot()
             let section = snapshot.sectionIdentifiers[indexPath.section]
             let rowsCount = snapshot.numberOfItems(inSection: section)
-            guard indexPath.section == snapshot.numberOfSections - 1 && (rowsCount > 5 && indexPath.row == rowsCount - 5 || rowsCount == 1) else { return }
+            let numberOfSections = snapshot.numberOfSections
+            guard indexPath.section == numberOfSections - 1 && (rowsCount > 5 && indexPath.row == rowsCount - 5) else { return }
             Task {
                 await loadMoreData()
             }
@@ -266,7 +267,7 @@ extension CollectionView {
 
         /// Called by the refresh control to execute the async refresh handler.
         @objc func reloadData() {
-            guard let refreshControl = refreshControl else { return }
+            guard let refreshControl = refreshControl, !refreshControl.isRefreshing else { return }
             Task { @MainActor in
                 refreshControl.beginRefreshing()
                 await parent.pullToRefresh?()
