@@ -77,9 +77,11 @@ extension CollectionView {
             switch pageControlStyle {
             case .minimal(let color):
                 pc.backgroundStyle = .minimal
+                pc.pageIndicatorTintColor = color?.withAlphaComponent(0.25)
                 pc.currentPageIndicatorTintColor = color
             case .prominent(let color):
                 pc.backgroundStyle = .prominent
+                pc.pageIndicatorTintColor = color?.withAlphaComponent(0.25)
                 pc.currentPageIndicatorTintColor = color
             }
             collectionView.addSubview(pc)

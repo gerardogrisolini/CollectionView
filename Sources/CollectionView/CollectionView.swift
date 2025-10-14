@@ -348,7 +348,7 @@ import Combine
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .three, spacing: 10, padding: 16, pageControl: .prominent(.orange))) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .three, spacing: 10, padding: 16, pageControl: .minimal(.blue))) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
