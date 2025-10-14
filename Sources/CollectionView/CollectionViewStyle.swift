@@ -15,7 +15,7 @@ public enum CollectionViewStyle {
     /// A grid layout with the specified number of columns, row height, and spacing.
     case grid(numOfColumns: Int, heightOfRow: CGFloat, spacing: CGFloat)
     /// A horizontally scrolling carousel with a preset layout and custom spacing.
-    case carousel(layout: CarouselLayout, spacing: CGFloat, pageControl: UIPageControl.BackgroundStyle? = nil, ignoreSafeArea: Bool = false)
+    case carousel(layout: CarouselLayout, spacing: CGFloat, padding: CGFloat = 0, pageControl: PageControlStyle? = nil, ignoreSafeArea: Bool = false)
     /// Use a fully custom `UICollectionViewLayout` instance provided by the caller.
     case custom(UICollectionViewLayout)
     
@@ -29,5 +29,10 @@ public enum CollectionViewStyle {
         case three = 3
         /// Four items per page (2x2 grid).
         case four = 4
+    }
+    
+    public enum PageControlStyle {
+        case minimal(UIColor? = nil)
+        case prominent(UIColor? = nil)
     }
 }

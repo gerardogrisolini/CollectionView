@@ -146,9 +146,8 @@ import Combine
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
         collectionView.contentInset = contentInset
-        //collectionView.bounces = false
         
-        if case .carousel(_, _, _, let ignoreSafeArea) = style, ignoreSafeArea, let top = UIApplication.shared.windows.first?.safeAreaInsets.top
+        if case .carousel(_, _, _, _, let ignoreSafeArea) = style, ignoreSafeArea, let top = UIApplication.shared.windows.first?.safeAreaInsets.top
         {
             collectionView.contentInset.top = -top
             collectionView.contentInset.bottom = -top
@@ -349,7 +348,7 @@ import Combine
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .two, spacing: 10, pageControl: .prominent)) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .three, spacing: 10, padding: 16, pageControl: .prominent(.orange))) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))

@@ -17,8 +17,8 @@ extension CollectionView.Coordinator {
             return collectionLayout(size: size, spacing: spacing, direction: direction)
         case .grid(let numOfColumns, let heightOfRow, let spacing):
             return gridLayout(numOfColumns: numOfColumns, heightOfRow: heightOfRow, spacing: spacing)
-        case .carousel(let layout, let spacing, _, _):
-            return carouselLayout(layout: layout, spacing: spacing)
+        case .carousel(let layout, let spacing, let padding, _, _):
+            return carouselLayout(layout: layout, spacing: spacing, padding: padding)
         case .custom(let layout):
             return layout
         }
@@ -28,6 +28,7 @@ extension CollectionView.Coordinator {
     private var listLayout: UICollectionViewLayout {
         var config = UICollectionLayoutListConfiguration(appearance: .plain)
         config.showsSeparators = false
+        config.backgroundColor = .clear
         if #available(iOS 15.0, *) {
             config.headerTopPadding = 0
         }
@@ -97,8 +98,8 @@ extension CollectionView.Coordinator {
     }
     
     /// Horizontal carousel with paging and presets that adapt to orientation and size.
-    private func carouselLayout(layout: CollectionViewStyle.CarouselLayout, spacing: CGFloat) -> UICollectionViewLayout {
-        UICollectionViewCompositionalLayout { _, environment in
+    private func carouselLayout(layout: CollectionViewStyle.CarouselLayout, spacing: CGFloat, padding: CGFloat) -> UICollectionViewLayout {
+        UICollectionViewCompositionalLayout { [weak self] _, environment in
             let rowsWidth: NSCollectionLayoutDimension
             let rowsHeight: NSCollectionLayoutDimension
             let rowsCount: Int
@@ -134,7 +135,7 @@ extension CollectionView.Coordinator {
                 }
             
             case .three:
-                return self.threeLayout(spacing: spacing, environment: environment)
+                return self?.threeLayout(spacing: spacing, padding: padding, environment: environment)
 
             case .four:
                 rowsCount = 2
@@ -144,6 +145,7 @@ extension CollectionView.Coordinator {
                 columnsWidth = .fractionalWidth(1.0)
                 columnsHeight = .fractionalHeight(0.5)
             }
+            
             let itemSize = NSCollectionLayoutSize(
                 widthDimension: columnsWidth,
                 heightDimension: columnsHeight
@@ -161,9 +163,10 @@ extension CollectionView.Coordinator {
             )
             rowColumn.interItemSpacing = .fixed(spacing)
 
+            let desiredHeight = environment.container.effectiveContentSize.height - (self?.pageControl == nil ? 0 : 38)
             let groupSize = NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(1.0),
-                heightDimension: .fractionalHeight(1.0)
+                widthDimension: .fractionalWidth(0.9),
+                heightDimension: .absolute(desiredHeight)
             )
             let group = NSCollectionLayoutGroup.horizontal(
                 layoutSize: groupSize,
@@ -173,6 +176,7 @@ extension CollectionView.Coordinator {
             group.interItemSpacing = .fixed(spacing)
           
             let section = NSCollectionLayoutSection(group: group)
+            section.interGroupSpacing = spacing
             section.orthogonalScrollingBehavior = .groupPagingCentered
             section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
                 let page = round(offset.x / env.container.effectiveContentSize.width)
@@ -185,7 +189,7 @@ extension CollectionView.Coordinator {
     }
     
     /// Specialized helper for the `.three` carousel presenting a 1+2 grid.
-    private func threeLayout(spacing: CGFloat, environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
+    private func threeLayout(spacing: CGFloat, padding: CGFloat, environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
         let mainWidth: NSCollectionLayoutDimension
         let trailingWidth: NSCollectionLayoutDimension
         let height: NSCollectionLayoutDimension
@@ -223,10 +227,12 @@ extension CollectionView.Coordinator {
             subitem: pairItem,
             count: 2)
 
+        let desiredHeight = environment.container.effectiveContentSize.height - (pageControl == nil ? 0 : 38)
+        let desiredWidth = environment.container.effectiveContentSize.width - (padding * 2)
         mainGroup = NSCollectionLayoutGroup.horizontal(
             layoutSize: NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(1.0),
-                heightDimension: .fractionalHeight(1.0)),
+                widthDimension: .absolute(desiredWidth),
+                heightDimension: .absolute(desiredHeight)),
             subitems: [mainItem, trailingGroup])
         
         let section = NSCollectionLayoutSection(group: mainGroup)

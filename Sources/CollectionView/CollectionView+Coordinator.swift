@@ -62,7 +62,7 @@ extension CollectionView {
         }
         
         private func addPageControl(to collectionView: UICollectionView) {
-            guard case let .carousel(layout, _, pageControlStyle, safeArea) = parent.style, let pageControlStyle else { return }
+            guard case let .carousel(layout, _, _, pageControlStyle, _) = parent.style, let pageControlStyle else { return }
 
             let totalItems = parent.data.first?.count ?? 1
             let x = totalItems.isMultiple(of: layout.rawValue) ? 0 : 1
@@ -74,12 +74,19 @@ extension CollectionView {
             pc.hidesForSinglePage = true
             pc.numberOfPages = pages
             pc.currentPage = 0
-            pc.backgroundStyle = pageControlStyle
+            switch pageControlStyle {
+            case .minimal(let color):
+                pc.backgroundStyle = .minimal
+                pc.currentPageIndicatorTintColor = color
+            case .prominent(let color):
+                pc.backgroundStyle = .prominent
+                pc.currentPageIndicatorTintColor = color
+            }
             collectionView.addSubview(pc)
             collectionView.bringSubviewToFront(pc)
             NSLayoutConstraint.activate([
                 pc.centerXAnchor.constraint(equalTo: collectionView.centerXAnchor),
-                pc.bottomAnchor.constraint(equalTo: collectionView.safeAreaLayoutGuide.bottomAnchor, constant: safeArea ? 0 : -16)
+                pc.bottomAnchor.constraint(equalTo: collectionView.safeAreaLayoutGuide.bottomAnchor)
             ])
             
             self.pageControl = pc
