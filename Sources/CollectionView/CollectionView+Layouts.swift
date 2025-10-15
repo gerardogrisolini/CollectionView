@@ -163,7 +163,7 @@ extension CollectionView.Coordinator {
             )
             rowColumn.interItemSpacing = .fixed(spacing)
 
-            let desiredHeight = environment.container.effectiveContentSize.height - (self?.pageControl == nil ? 0 : 38)
+            let desiredHeight = environment.container.effectiveContentSize.height - (self?.pageControl == nil ? 0 : 24)
             let groupSize = NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(0.9),
                 heightDimension: .absolute(desiredHeight)
@@ -227,7 +227,7 @@ extension CollectionView.Coordinator {
             subitem: pairItem,
             count: 2)
 
-        let desiredHeight = environment.container.effectiveContentSize.height - (pageControl == nil ? 0 : 38)
+        let desiredHeight = environment.container.effectiveContentSize.height - (pageControl == nil ? 0 : 24)
         let desiredWidth = environment.container.effectiveContentSize.width - (padding * 2)
         mainGroup = NSCollectionLayoutGroup.horizontal(
             layoutSize: NSCollectionLayoutSize(
