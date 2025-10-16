@@ -179,8 +179,10 @@ extension CollectionView.Coordinator {
             section.interGroupSpacing = spacing
             section.orthogonalScrollingBehavior = .groupPagingCentered
             section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
-                let page = round(offset.x / env.container.effectiveContentSize.width)
-                self?.pageControl?.currentPage = Int(page)
+                // Each page is a group with width 90% of the container plus inter-group spacing
+                let pageStride = env.container.effectiveContentSize.width * 0.9 + spacing
+                let page = Int(round(offset.x / pageStride))
+                self?.pageControl?.currentPage = page
                 self?.parent.onScroll?(offset)
             }
             
@@ -239,11 +241,15 @@ extension CollectionView.Coordinator {
         section.orthogonalScrollingBehavior = .groupPagingCentered
         section.interGroupSpacing = spacing
         section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
-            let page = round(offset.x / env.container.effectiveContentSize.width)
-            self?.pageControl?.currentPage = Int(page)
+            // Each page is the absolute group width (container width minus horizontal padding) plus inter-group spacing
+            let desiredWidth = env.container.effectiveContentSize.width - (padding * 2)
+            let pageStride = desiredWidth + spacing
+            let page = Int(round(offset.x / pageStride))
+            self?.pageControl?.currentPage = page
             self?.parent.onScroll?(offset)
         }
 
         return section
     }
 }
+
