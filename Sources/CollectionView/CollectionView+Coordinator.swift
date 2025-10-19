@@ -35,8 +35,8 @@ extension CollectionView {
         /// Configures datasource, supplementary views, and subscribes to programmatic scroll commands.
         func configure(_ collectionView: UICollectionView) {
             configureDataSource(collectionView)
-            addRefreshControl(to: collectionView)
             addPageControl(to: collectionView)
+            addRefreshControl(to: collectionView)
             
             // Subscribes to programmatic scroll commands.
             if let scrollTo = parent.scrollTo {
@@ -62,17 +62,12 @@ extension CollectionView {
         }
         
         private func addPageControl(to collectionView: UICollectionView) {
-            guard case let .carousel(layout, _, _, pageControlStyle, _) = parent.style, let pageControlStyle else { return }
-
-            let totalItems = parent.data.first?.count ?? 1
-            let x = totalItems.isMultiple(of: layout.rawValue) ? 0 : 1
-            let pages = max(1, (totalItems / layout.rawValue) + x)
+            guard case let .carousel(_, _, _, pageControlStyle, _) = parent.style, let pageControlStyle else { return }
 
             let pc = UIPageControl()
             pc.translatesAutoresizingMaskIntoConstraints = false
             pc.isUserInteractionEnabled = false
             pc.hidesForSinglePage = true
-            pc.numberOfPages = pages
             pc.currentPage = 0
             switch pageControlStyle {
             case .minimal(let color):
@@ -91,9 +86,16 @@ extension CollectionView {
                 pc.bottomAnchor.constraint(equalTo: collectionView.safeAreaLayoutGuide.bottomAnchor)
             ])
             
-            self.pageControl = pc
+            pageControl = pc
+            updateNumberOfPages(to: parent.data.first)
         }
 
+        private func updateNumberOfPages(to items: [T]?) {
+            guard let items, case let .carousel(layout, _, _, _, _) = parent.style else { return }
+            let x = items.count.isMultiple(of: layout.rawValue) ? 0 : 1
+            let pages = max(0, (items.count / layout.rawValue) + x)
+            pageControl?.numberOfPages = pages
+        }
 
         // MARK: DiffableDataSource
         
@@ -254,7 +256,11 @@ extension CollectionView {
                     }
                 }
                 dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
-
+                
+            }
+            
+            if var pageControl {
+                updateNumberOfPages(to: items.first)
             }
         }
 

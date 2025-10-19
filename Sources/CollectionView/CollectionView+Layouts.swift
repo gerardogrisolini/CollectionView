@@ -164,8 +164,9 @@ extension CollectionView.Coordinator {
             rowColumn.interItemSpacing = .fixed(spacing)
 
             let desiredHeight = environment.container.effectiveContentSize.height - (self?.pageControl == nil ? 0 : 24)
+            let desiredWidth = environment.container.effectiveContentSize.width - (padding * 2)
             let groupSize = NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(0.9),
+                widthDimension: .absolute(desiredWidth),
                 heightDimension: .absolute(desiredHeight)
             )
             let group = NSCollectionLayoutGroup.horizontal(
@@ -179,8 +180,8 @@ extension CollectionView.Coordinator {
             section.interGroupSpacing = spacing
             section.orthogonalScrollingBehavior = .groupPagingCentered
             section.visibleItemsInvalidationHandler = { [weak self] (_, offset, env) -> Void in
-                // Each page is a group with width 90% of the container plus inter-group spacing
-                let pageStride = env.container.effectiveContentSize.width * 0.9 + spacing
+                let desiredWidth = env.container.effectiveContentSize.width - (padding * 2)
+                let pageStride = desiredWidth + spacing
                 let page = Int(round(offset.x / pageStride))
                 self?.pageControl?.currentPage = page
                 self?.parent.onScroll?(offset)
