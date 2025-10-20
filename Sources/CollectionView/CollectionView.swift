@@ -172,6 +172,7 @@ import Combine
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
         context.coordinator.makeSnapshot(items: data)
+        uiView.contentInset = contentInset
     }
     
     /// Creates the coordinator responsible for datasource, delegate, and subscriptions.
@@ -330,7 +331,7 @@ import Combine
     ]
     
     VStack(spacing: 50) {
-        CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8, direction: .horizontal)) { model in
+        CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8, direction: .horizontal), contentInset: .init(top: 0, left: 16, bottom: 0, right: 16)) { model in
             Text(model.description)
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity, maxHeight: 50)
@@ -344,6 +345,7 @@ import Combine
                 .frame(maxWidth: .infinity, maxHeight: 50)
                 .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
         }
+        .padding()
     }
 }
 
@@ -362,5 +364,6 @@ import Combine
             .frame(maxWidth: .infinity, maxHeight: 50)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
     }
+    .padding()
 }
 
