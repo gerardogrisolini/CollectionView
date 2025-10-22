@@ -49,5 +49,5 @@ extension CollectionView {
 }
 
 public protocol CollectionViewCellHeightProviding {
-    @MainActor @preconcurrency var height: CGFloat { get }
+    @MainActor @preconcurrency var height: CGFloat? { get }
 }
