@@ -159,11 +159,9 @@ extension CollectionView {
         
         private func cellContentConfiguration(_ cell: CustomCollectionViewCell, _ item: some View) {
             cell.indentationLevel = 0
-            cell.withPriority = { [parent] in
-                if case .collection = parent.style { return .fittingSizeLevel }
-                else { return .required }
-            }()
-
+            if let i = item as? CollectionViewCellHeightProviding {
+                cell.height = i.height
+            }
             if #available(iOS 16.0, *) {
                 cell.contentConfiguration = UIHostingConfiguration { item }.margins(.all, 0)
             } else {
@@ -172,26 +170,11 @@ extension CollectionView {
             cell.backgroundConfiguration = .clear()
         }
 
-//        var lastSnapshotDate: String? = nil
-//        
-//        func timestamp() -> String {
-//            let dateFormatter = DateFormatter()
-//            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-//            dateFormatter.dateFormat = "mmss"
-//            return String(format: "%@", dateFormatter.string(from: Date()))
-//        }
-    
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
             let animatingDifferences = parent.animatingDifferences
             
-//            let snapshotDate = timestamp()
-//            guard lastSnapshotDate != snapshotDate else { return }
-//            lastSnapshotDate = snapshotDate
-//            debugPrint("makeSnapshot:", snapshotDate, lastSnapshotDate, parent.style)
-
-            // Section identifiers are the first element of each section.
             let sectionData = items.compactMap { $0.first }
 
             func cleanUp() -> [T] {
@@ -259,7 +242,7 @@ extension CollectionView {
                 
             }
             
-            if var pageControl {
+            if pageControl != nil {
                 updateNumberOfPages(to: items.first)
             }
         }

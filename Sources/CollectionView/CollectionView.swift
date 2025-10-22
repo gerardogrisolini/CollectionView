@@ -172,7 +172,6 @@ import Combine
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
         context.coordinator.makeSnapshot(items: data)
-        uiView.contentInset = contentInset
     }
     
     /// Creates the coordinator responsible for datasource, delegate, and subscriptions.
@@ -305,6 +304,8 @@ import Combine
         struct ListItemView: View {
             let item: ItemModel
 
+            var height: CGFloat { 24 }
+            
             var body: some View {
                 Group {
                     if item.isSection {
@@ -316,7 +317,7 @@ import Combine
                     }
                 }
                 .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 .foregroundColor(item.isSelected ? Color.yellow : Color.black)
             }
         }
@@ -350,7 +351,7 @@ import Combine
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .three, spacing: 10, padding: 16, pageControl: .minimal(.blue))) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .one, spacing: 10, padding: 0, pageControl: .minimal(.orange))) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
