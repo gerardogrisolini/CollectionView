@@ -293,7 +293,7 @@ import Combine
         
         //MARK: - Model
 
-        struct ItemModel: Identifiable, Hashable, Equatable {
+        struct ItemModel: Hashable, Sendable {
             let id: Int
             var isSelected: Bool
             let isSection: Bool

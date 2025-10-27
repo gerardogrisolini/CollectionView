@@ -19,6 +19,8 @@ extension CollectionView {
 
     public class Coordinator: NSObject, UICollectionViewDelegate, UICollectionViewDragDelegate, UICollectionViewDropDelegate {
         
+        private var isLoadingMore = false
+        
         /// Combine dispose bag. Subscriptions auto-cancel on dealloc; manual cancellation is unnecessary.
         private var cancellables: Set<AnyCancellable> = []
         /// Parent
@@ -176,20 +178,10 @@ extension CollectionView {
             let animatingDifferences = parent.animatingDifferences
             
             let sectionData = items.compactMap { $0.first }
-
-            func cleanUp() -> [T] {
-                var snapshot = dataSource.snapshot()
-                let sectionIdentifiers = snapshot.sectionIdentifiers
-                if sectionData != sectionIdentifiers {
-                    snapshot.deleteSections(sectionIdentifiers)
-                    dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
-                }
-                return sectionIdentifiers
-            }
             
             if let canExpandSectionAt = parent.canExpandSectionAt {
                 
-                let sectionIdentifiers = cleanUp()
+                let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
                 for i in sectionData.indices {
                     var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
                     let expandableSection = canExpandSectionAt(i)
@@ -218,7 +210,6 @@ extension CollectionView {
 
             } else if parent.moveItemAt != nil {
                     
-                _ = cleanUp()
                 for i in sectionData.indices {
                     var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
                     sectionSnapshot.append(items[i])
@@ -249,14 +240,29 @@ extension CollectionView {
 
         /// Prefetch-like action: when near the end, calls `loadMoreData` to implement infinite scroll.
         public func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-            guard let loadMoreData = parent.loadMoreData else { return }
+            // Require a loadMoreData handler and avoid re-entrancy while a load is in progress
+            guard !isLoadingMore, let loadMoreData = parent.loadMoreData else { return }
+
             let snapshot = dataSource.snapshot()
+            // Ensure the indexPath is valid within the current snapshot
+            guard snapshot.sectionIdentifiers.indices.contains(indexPath.section) else { return }
             let section = snapshot.sectionIdentifiers[indexPath.section]
             let rowsCount = snapshot.numberOfItems(inSection: section)
             let numberOfSections = snapshot.numberOfSections
-            guard indexPath.section == numberOfSections - 1 && (rowsCount > 5 && indexPath.row == rowsCount - 5) else { return }
-            Task {
+            guard numberOfSections > 0, rowsCount > 0 else { return }
+
+            // Trigger when we reach the last item of the last section
+            let isLastSection = indexPath.section == numberOfSections - 1
+            let isLastRow = indexPath.row == rowsCount - 1
+            guard isLastSection && isLastRow else { return }
+
+            // Mark loading to prevent multiple concurrent requests
+            isLoadingMore = true
+            Task { [weak self] in
                 await loadMoreData()
+                await MainActor.run {
+                    self?.isLoadingMore = false
+                }
             }
         }
 
@@ -265,7 +271,7 @@ extension CollectionView {
 
         /// Called by the refresh control to execute the async refresh handler.
         @objc func reloadData() {
-            guard let refreshControl = refreshControl, !refreshControl.isRefreshing else { return }
+            guard let refreshControl = refreshControl else { return }
             Task { @MainActor in
                 refreshControl.beginRefreshing()
                 await parent.pullToRefresh?()
@@ -362,3 +368,4 @@ extension CollectionView {
         }
     }
 }
+
