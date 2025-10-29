@@ -225,7 +225,7 @@ extension CollectionView {
                 var main = NSDiffableDataSourceSnapshot<T, T>()
                 main.appendSections(sections)
                 for i in sections.indices {
-                    if parent.hasSections {
+                    if parent.hasSections && parent.moveItemAt == nil {
                         main.appendItems(Array(items[i].dropFirst()), toSection: sections[i])
                     } else {
                         main.appendItems(items[i], toSection: sections[i])
