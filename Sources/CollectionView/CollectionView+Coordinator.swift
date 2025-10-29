@@ -175,64 +175,66 @@ extension CollectionView {
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
-            let animatingDifferences = parent.animatingDifferences
             
-            let sectionData = items.compactMap { $0.first }
-            
-            if let canExpandSectionAt = parent.canExpandSectionAt {
+            let animatingDifferences = parent.animatingDifferences            
+            let sections = items.compactMap { $0.first }
+
+            if let canExpand = parent.canExpandSectionAt {
+
+                var snapshot = dataSource.snapshot()
+                let oldItems = snapshot.sectionIdentifiers.map { item in
+                    let expanded = dataSource.snapshot(for: item).isExpanded(item)
+                    let exist = sections.contains(item)
+                    return (item: item, expanded: expanded, exist: exist)
+                }
                 
-                let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
-                for i in sectionData.indices {
+                let deletedSections = oldItems.filter { !$0.exist }.map(\.item)
+                if !deletedSections.isEmpty {
+                    snapshot.deleteSections(deletedSections)
+                    dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
+                }
+
+                for i in sections.indices {
+                    let section = sections[i]
+                    let expandableSection = canExpand(i)
                     var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
-                    let expandableSection = canExpandSectionAt(i)
+                    
                     switch expandableSection {
                     case .none:
                         sectionSnapshot.append(items[i])
-
                     default:
-                        let header = sectionData[i]
-                        sectionSnapshot.append([header])
-                        sectionSnapshot.append(Array(items[i][1...]), to: header)
-
-                        // Check if the header is already expanded in the current snapshot
-                        if sectionIdentifiers.indices.contains(i) {
-                            let snapshot = dataSource.snapshot(for: sectionIdentifiers[i])
-                            if snapshot.isExpanded(header) {
-                                sectionSnapshot.expand([header])
+                        sectionSnapshot.append([section])
+                        sectionSnapshot.append(Array(items[i].dropFirst()), to: section)
+                        
+                        if let old = oldItems.first(where: { $0.item == section }) {
+                            if old.expanded {
+                                sectionSnapshot.expand([section])
+                            } else {
+                                sectionSnapshot.collapse([section])
                             }
                         } else if case .expanded = expandableSection {
-                            sectionSnapshot.expand([header])
+                            sectionSnapshot.expand([section])
                         }
                     }
-
-                    dataSource.apply(sectionSnapshot, to: sectionData[i], animatingDifferences: animatingDifferences)
-                }
-
-            } else if parent.moveItemAt != nil {
                     
-                for i in sectionData.indices {
-                    var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
-                    sectionSnapshot.append(items[i])
-                    dataSource.apply(sectionSnapshot, to: sectionData[i], animatingDifferences: animatingDifferences)
+                    dataSource.apply(sectionSnapshot, to: section, animatingDifferences: animatingDifferences)
                 }
                 
             } else {
                 
-                var snapshot = NSDiffableDataSourceSnapshot<T, T>()
-                snapshot.appendSections(sectionData)
-                if parent.hasSections {
-                    for i in sectionData.indices {
-                        snapshot.appendItems(Array(items[i][1...]), toSection: sectionData[i])
-                    }
-                } else {
-                    for i in sectionData.indices {
-                        snapshot.appendItems(items[i], toSection: sectionData[i])
+                var main = NSDiffableDataSourceSnapshot<T, T>()
+                main.appendSections(sections)
+                for i in sections.indices {
+                    if parent.hasSections {
+                        main.appendItems(Array(items[i].dropFirst()), toSection: sections[i])
+                    } else {
+                        main.appendItems(items[i], toSection: sections[i])
                     }
                 }
-                dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
+                dataSource.apply(main, animatingDifferences: animatingDifferences)
                 
             }
-            
+
             if pageControl != nil {
                 updateNumberOfPages(to: items.first)
             }
