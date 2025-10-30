@@ -165,7 +165,7 @@ extension CollectionView {
                 cell.height = i.height
             }
             if #available(iOS 16.0, *) {
-                cell.contentConfiguration = UIHostingConfiguration { item }.margins(.all, 0)
+                cell.contentConfiguration = UIHostingConfiguration { item }.minSize(width: 0, height: 0).margins(.all, 0)
             } else {
                 cell.contentConfiguration = HostingConfiguration { item }.margins(.zero)
             }

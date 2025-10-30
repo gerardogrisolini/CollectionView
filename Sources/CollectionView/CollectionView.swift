@@ -304,7 +304,7 @@ import Combine
         struct ListItemView: View {
             let item: ItemModel
 
-            var height: CGFloat { 24 }
+            var height: CGFloat { 44 }
             
             var body: some View {
                 Group {
@@ -317,7 +317,7 @@ import Combine
                     }
                 }
                 .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .foregroundColor(item.isSelected ? Color.yellow : Color.black)
             }
         }
