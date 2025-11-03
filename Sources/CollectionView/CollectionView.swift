@@ -41,7 +41,7 @@ import Combine
     /// Callback invoked on item tapped
     let onItemTap: ((T) -> Void)?
     /// Callback invoked on each `scrollViewDidScroll` with current content offset.
-    let onScroll: ((CGPoint) -> Void)?
+    let onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)?
     /// Query to decide if a section can be expanded or collapsed; `nil` disables expandable sections.
     let canExpandSectionAt: ((Int) -> ExpandableSection)?
     /// Predicate allowing the start of a drag from a given index.
@@ -75,7 +75,7 @@ import Combine
         pullToRefresh: (() async -> Void)? = nil,
         loadMoreData: (() async -> Void)? = nil,
         onItemTap: ((T) -> Void)? = nil,
-        onScroll: ((CGPoint) -> Void)? = nil,
+        onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)? = nil,
         canMoveItemFrom: ((IndexPath) -> Bool)? = nil,
         canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
         moveItemAt: ((IndexPath, IndexPath) -> Void)? = nil)
@@ -109,7 +109,7 @@ import Combine
         pullToRefresh: (() async -> Void)? = nil,
         loadMoreData: (() async -> Void)? = nil,
         onItemTap: ((T) -> Void)? = nil,
-        onScroll: ((CGPoint) -> Void)? = nil,
+        onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)? = nil,
         canExpandSectionAt: ((Int) -> ExpandableSection)? = nil,
         canMoveItemFrom: ((IndexPath) -> Bool)? = nil,
         canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
@@ -233,9 +233,9 @@ import Combine
 
                     await loadMore()
                     
-                } onScroll: { offset in
+                } onScroll: { offset, contentHeight in
 
-                    print(abs(offset.y))
+                    print(abs(offset.y), contentHeight.height)
                     
                 } canExpandSectionAt: { section in
 

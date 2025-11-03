@@ -286,7 +286,7 @@ extension CollectionView {
 
         /// Forwards scroll updates to the SwiftUI closure.
         public func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            parent.onScroll?(scrollView.contentOffset)
+            parent.onScroll?(scrollView.contentOffset, scrollView.contentSize)
         }
         
 

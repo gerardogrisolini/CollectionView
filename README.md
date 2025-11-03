@@ -82,8 +82,9 @@ VStack(spacing: 8) {
     CollectionView(items, scrollTo: scrollTo) { item in
         Text("Item \(item)")
             .frame(maxWidth: .infinity, minHeight: 44)
-    } onScroll: { offset in
-        print(abs(offset.y))
+
+    } onScroll: { offset, contentHeight in
+        print(abs(offset.y), contentHeight.height)
     }
 }
 ```
@@ -217,9 +218,9 @@ struct ContentView: View {
 
                 await loadMore()
                 
-            } onScroll: { offset in
+            } onScroll: { offset, contentHeight in
 
-                print(abs(offset.y))
+                print(abs(offset.y), contentHeight.height)
                 
             } canExpandSectionAt: { section in
 

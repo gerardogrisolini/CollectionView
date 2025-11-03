@@ -184,7 +184,7 @@ extension CollectionView.Coordinator {
                 let pageStride = desiredWidth + spacing
                 let page = Int(round(offset.x / pageStride))
                 self?.pageControl?.currentPage = page
-                self?.parent.onScroll?(offset)
+                self?.parent.onScroll?(offset, env.container.effectiveContentSize)
             }
             
             return section
@@ -247,7 +247,7 @@ extension CollectionView.Coordinator {
             let pageStride = desiredWidth + spacing
             let page = Int(round(offset.x / pageStride))
             self?.pageControl?.currentPage = page
-            self?.parent.onScroll?(offset)
+            self?.parent.onScroll?(offset, env.container.effectiveContentSize)
         }
 
         return section
