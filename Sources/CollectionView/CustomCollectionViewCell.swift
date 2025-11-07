@@ -12,14 +12,6 @@ extension CollectionView {
     /// A list cell that expands vertically to fit the hosted SwiftUI content.
     class CustomCollectionViewCell: UICollectionViewListCell {
         
-        //var withPriority: UILayoutPriority = .required
-        var height: CGFloat? = nil
-
-        override func prepareForReuse() {
-            super.prepareForReuse()
-            backgroundColor = .clear
-        }
-        
         override func systemLayoutSizeFitting(
             _ targetSize: CGSize,
             withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority,
@@ -31,10 +23,6 @@ extension CollectionView {
             var targetSize = targetSize
             targetSize.height = CGFloat.greatestFiniteMagnitude
 
-            if let height {
-                return .init(width: targetSize.width, height:  height)
-            }
-            
             // The horizontal fitting priority .required ensures that
             // the desired cell width (targetSize.width)
             // is preserved. The vertical priority .fittingSizeLevel
@@ -46,8 +34,4 @@ extension CollectionView {
             )
         }
     }
-}
-
-public protocol CollectionViewCellHeightProviding {
-    @MainActor @preconcurrency var height: CGFloat? { get }
 }

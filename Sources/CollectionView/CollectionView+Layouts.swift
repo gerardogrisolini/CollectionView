@@ -62,7 +62,7 @@ extension CollectionView.Coordinator {
                 subitems: [.init(layoutSize: layoutSize)]
             )
             group.interItemSpacing = .fixed(spacing)
-
+            
             let section = NSCollectionLayoutSection(group: group)
             section.interGroupSpacing = spacing
 

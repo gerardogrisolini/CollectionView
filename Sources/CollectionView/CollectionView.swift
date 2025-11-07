@@ -303,8 +303,6 @@ import Combine
 
         struct ListItemView: View {
             let item: ItemModel
-
-            var height: CGFloat { 44 }
             
             var body: some View {
                 Group {
@@ -332,15 +330,15 @@ import Combine
     ]
     
     VStack(spacing: 50) {
-        CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8, direction: .horizontal), contentInset: .init(top: 0, left: 16, bottom: 0, right: 16)) { model in
+        CollectionView(data, style: .collection(size: .init(width: 120, height: 50), spacing: 8, direction: .horizontal), contentInset: .init(top: 0, left: 16, bottom: 0, right: 16)) { model in
             Text(model.description)
                 .padding(.horizontal)
-                .frame(maxWidth: .infinity, maxHeight: 50)
+                .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50)
                 .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
         }
         .frame(height: 60)
 
-        CollectionView(data, style: .collection(size: .init(width: 100, height: 50), spacing: 8)) { model in
+        CollectionView(data, style: .collection(size: .init(width: 120, height: 50), spacing: 8)) { model in
             Text(model)
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity, maxHeight: 50)
@@ -351,7 +349,7 @@ import Combine
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .one, spacing: 10, padding: 0, pageControl: .minimal(.orange))) { model in
+    CollectionView(Array(1...9), style: .carousel(layout: .one, spacing: 10, padding: 16, pageControl: .minimal(.orange))) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))

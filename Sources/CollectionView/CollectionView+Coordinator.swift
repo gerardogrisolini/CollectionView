@@ -161,9 +161,6 @@ extension CollectionView {
         
         private func cellContentConfiguration(_ cell: CustomCollectionViewCell, _ item: some View) {
             cell.indentationLevel = 0
-            if let i = item as? CollectionViewCellHeightProviding {
-                cell.height = i.height
-            }
             if #available(iOS 16.0, *) {
                 cell.contentConfiguration = UIHostingConfiguration { item }.minSize(width: 0, height: 0).margins(.all, 0)
             } else {
