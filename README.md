@@ -27,19 +27,20 @@ dependencies: [
 CollectionView(Array(1...20)) { model in
     Text("Item \(model)")
         .frame(maxWidth: .infinity, minHeight: 56)
-        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-        .padding(.horizontal, 8)
+        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(.gray))
+        .padding(8)
 }
 ```
 
 ### Style: (list / collection / grid / carousel, custom layout)
 
 ```swift
-CollectionView(Array(0...11), style: .carousel(layout: .three, spacing: 4)) { model in
+CollectionView(Array(0...11)) { model in
     Text("Item \(model)")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 6).fill(.orange))
 }
+.style(.carousel(layout: .three, spacing: 4, padding: 8))
 .frame(height: 300)
 ```
 
@@ -60,7 +61,8 @@ CollectionView(items) { model in
         .font(model.isSection ? .headline : .body)
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         .padding(.horizontal, 8)
-} canExpandSectionAt: { section in
+}
+.canExpandSectionAt { section in
     // first 2 sections expanded, then collapsed, then no rule
     section < 2 ? .expanded : section < 4 ? .collapsed : .none
 }
@@ -69,7 +71,6 @@ CollectionView(items) { model in
 ### Scroll:
 
 ```swift
-@State var items = Array(1...50)
 let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
 
 VStack(spacing: 8) {
@@ -79,11 +80,13 @@ VStack(spacing: 8) {
             scrollTo.send(.item(IndexPath(row: 24, section: 0), position: .top))
         }
     }
-    CollectionView(items, scrollTo: scrollTo) { item in
+    CollectionView(Array(1...50)) { item in
         Text("Item \(item)")
             .frame(maxWidth: .infinity, minHeight: 44)
 
-    } onScroll: { offset, contentHeight in
+    }
+    .scrollTo(scrollTo)
+    .onScroll { offset, contentHeight in
         print(abs(offset.y), contentHeight.height)
     }
 }
@@ -106,10 +109,11 @@ private func loadMore() async {
 
 CollectionView(data) { item in
     Text("Riga #\(item)").frame(maxWidth: .infinity, minHeight: 48)
-} pullToRefresh: {
-    // fake refresh
+}
+.pullToRefresh {
     try? await Task.sleep(nanoseconds: 1_000_000_000)
-} loadMoreData: {
+}
+.loadMoreData {
     await loadMore()
 }
 .overlay(Group { if isBusy { ProgressView() } })
@@ -118,23 +122,27 @@ CollectionView(data) { item in
 ### Drag & drop:
 
 ```swift
-    @State private var items = (0..<20).map { $0 }
+@State private var items = (0..<20).map { $0 }
 
-    CollectionView([items]) { item in
-        Text("Item \(item)")
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .padding(.horizontal, 8)
-    } canMoveItemFrom: { from in
-        // block moving the first element
-        !(from.section == 0 && from.row == 0)
-    } canMoveItemAt: { _, to in
-        // allow drop only in the same section
-        .init(operation: to.section == 0 ? .move : .forbidden)
-    } moveItemAt: { from, to in
-        // update the local model
-        let item = items.remove(at: from.row)
-        items.insert(item, at: min(to.row, items.count))
-    }
+CollectionView([items]) { item in
+    Text("Item \(item)")
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 8)
+}
+.canMoveItemFrom { from in
+    // block moving the first element
+    !(from.section == 0 && from.row == 0)
+}
+.canMoveItemAt { _, to in
+    // allow drop only in the same section
+    .init(operation: to.section == 0 ? .move : .forbidden)
+}
+.moveItemAt { from, to in
+    // update the local model
+    let item = items.remove(at: from.row)
+    items.insert(item, at: min(to.row, items.count))
+}
+.environment(\.editMode, .constant(.active))
 ```
 
 
@@ -173,15 +181,16 @@ struct ContentView: View {
                     }
                 }
             }
-
-            CollectionView(items, scrollTo: scrollTo) { model in
+            
+            CollectionView(items) { model in
                 
-                if model.id == 1 {
-                    CollectionView(Array(0...11), style: .carousel(layout: .three, spacing: 4)) { model in
-                        Text("Item \(model)")
+                if model == items.first?.first {
+                    CollectionView(Array(0...11)) { i in
+                        Text("Item \(i)")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
                     }
+                    .style(.carousel(layout: .three, spacing: 4))
                     .frame(height: 300)
                 } else if model.isSection {
                     Text("Section \(model.id.description)")
@@ -210,34 +219,42 @@ struct ContentView: View {
                         }
                 }
                 
-            } pullToRefresh: {
+            }
+            .scrollTo(scrollTo)
+            .pullToRefresh {
                 
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 
-            } loadMoreData: {
-
+            }
+            .loadMoreData {
+                
                 await loadMore()
                 
-            } onScroll: { offset, contentHeight in
-
+            }
+            .onScroll { offset, contentHeight in
+                
                 print(abs(offset.y), contentHeight.height)
                 
-            } canExpandSectionAt: { section in
-
-                section < 10 ? .expanded : section < 20 ? .collapsed : .none
-
-            } canMoveItemFrom: { from in
-
+            }
+            .canExpandSectionAt { section in
+                
+                section == 0 ? .none : section < 5 ? .expanded : .collapsed
+                
+            }
+            .canMoveItemFrom { from in
+                
                 !(from.section == 0 && from.row == 1)
                 
-            } canMoveItemAt: { from, to in
+            }
+            .canMoveItemAt { from, to in
                 
                 guard to.section == 1 else {
                     return .init(operation: .forbidden)
                 }
                 return .init(operation: .move, intent: .insertAtDestinationIndexPath)
                 
-            } moveItemAt: { from, to in
+            }
+            .moveItemAt { from, to in
                 
                 print("moveItemAt:", from, to)
                 

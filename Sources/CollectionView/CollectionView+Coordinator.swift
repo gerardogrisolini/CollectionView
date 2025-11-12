@@ -19,8 +19,6 @@ extension CollectionView {
 
     public class Coordinator: NSObject, UICollectionViewDelegate, UICollectionViewDragDelegate, UICollectionViewDropDelegate {
         
-        private var isLoadingMore = false
-        
         /// Combine dispose bag. Subscriptions auto-cancel on dealloc; manual cancellation is unnecessary.
         private var cancellables: Set<AnyCancellable> = []
         /// Parent
@@ -30,6 +28,8 @@ extension CollectionView {
         /// Lazily created page control (present only if `pageControl` is provided).
         var pageControl: UIPageControl?
         
+        var editMode: Bool = false
+
         init(_ parent: CollectionView) {
             self.parent = parent
         }
@@ -58,9 +58,14 @@ extension CollectionView {
         }
         
         private func addRefreshControl(to collectionView: UICollectionView) {
-            guard let refreshControl = refreshControl else { return }
-            refreshControl.addTarget(self, action: #selector(reloadData), for: .valueChanged)
-            collectionView.refreshControl = refreshControl
+            if parent.pullToRefresh != nil {
+                refreshControl = .init()
+                refreshControl?.addTarget(self, action: #selector(reloadData), for: .valueChanged)
+                collectionView.refreshControl = refreshControl
+            } else if parent.loadMoreData != nil {
+                refreshControl = .init()
+                collectionView.refreshControl = refreshControl
+            }
         }
         
         private func addPageControl(to collectionView: UICollectionView) {
@@ -146,7 +151,19 @@ extension CollectionView {
                 let snap = dataSource.snapshot(for: section)
                 let snap2 = snap.snapshot(of: item, includingParent: false)
                 let hasChildren = snap2.items.count > 0
-                cell.accessories = hasChildren ? [.outlineDisclosure()] : parent.canMoveItemFrom?(indexPath) == true ? [.reorder(displayed: .always)] : []
+                
+                var accessories: [UICellAccessory] = []
+                if hasChildren {
+                    accessories.append(.outlineDisclosure())
+                } else if editMode {
+                    if parent.canMoveItemFrom?(indexPath) == true {
+                        accessories.append(.reorder(displayed: .always))
+                    }
+                    if parent.selectedIndexPaths != nil {
+                        accessories.append(.multiselect(displayed: .always))
+                    }
+                }
+                cell.accessories = accessories
             }
         }
         
@@ -169,6 +186,15 @@ extension CollectionView {
             cell.backgroundConfiguration = .clear()
         }
 
+        func reloadSnapshot() {
+            let snapshot = dataSource.snapshot()
+            if #available(iOS 15.0, *) {
+                dataSource.applySnapshotUsingReloadData(snapshot)
+            } else {
+                // Fallback on earlier versions
+            }
+        }
+        
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
@@ -240,7 +266,7 @@ extension CollectionView {
         /// Prefetch-like action: when near the end, calls `loadMoreData` to implement infinite scroll.
         public func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             // Require a loadMoreData handler and avoid re-entrancy while a load is in progress
-            guard !isLoadingMore, let loadMoreData = parent.loadMoreData else { return }
+            guard let refreshControl = refreshControl, !refreshControl.isRefreshing, let loadMoreData = parent.loadMoreData else { return }
 
             let snapshot = dataSource.snapshot()
             // Ensure the indexPath is valid within the current snapshot
@@ -256,12 +282,10 @@ extension CollectionView {
             guard isLastSection && isLastRow else { return }
 
             // Mark loading to prevent multiple concurrent requests
-            isLoadingMore = true
-            Task { [weak self] in
+            Task { @MainActor [refreshControl] in
+                refreshControl.beginRefreshing()
                 await loadMoreData()
-                await MainActor.run {
-                    self?.isLoadingMore = false
-                }
+                refreshControl.endRefreshing()
             }
         }
 
@@ -270,10 +294,10 @@ extension CollectionView {
 
         /// Called by the refresh control to execute the async refresh handler.
         @objc func reloadData() {
-            guard let refreshControl = refreshControl else { return }
+            guard let refreshControl = refreshControl, let pullToRefresh = parent.pullToRefresh else { return }
             Task { @MainActor in
                 refreshControl.beginRefreshing()
-                await parent.pullToRefresh?()
+                await pullToRefresh()
                 refreshControl.endRefreshing()
             }
         }
@@ -287,15 +311,29 @@ extension CollectionView {
         }
         
 
-        // MARK: ItemTap
+        // MARK: ItemTap and Selection
 
         public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-            let snapshot = dataSource.snapshot()
-            let item = snapshot.itemIdentifiers(inSection: snapshot.sectionIdentifiers[indexPath.section])[indexPath.row]
-            parent.onItemTap?(item)
+            selection(collectionView, indexPath)
         }
         
+        public func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
+            selection(collectionView, indexPath)
+        }
+        
+        private func selection(_ collectionView: UICollectionView, _ indexPath: IndexPath) {
+            if let onItemTap = parent.onItemTap {
+//                let snapshot = dataSource.snapshot()
+//                let item = snapshot.itemIdentifiers(inSection: snapshot.sectionIdentifiers[indexPath.section])[indexPath.row]
+                let item = parent.data[indexPath.section][indexPath.row]
+                onItemTap(item)
+            }
 
+            guard editMode else { return }
+            parent.selectedIndexPaths?.wrappedValue = collectionView.indexPathsForSelectedItems ?? []
+        }
+        
+        
         // MARK: Drag & Drop
 
         /// Provides a local `UIDragItem` and verifies the source with `canMoveItemFrom`.

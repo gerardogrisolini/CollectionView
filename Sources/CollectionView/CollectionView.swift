@@ -20,116 +20,63 @@ import Combine
 /// - selection, scrolling callbacks, and drag & drop
 ///
 /// Provide your items and a SwiftUI content builder to render each cell.
-@MainActor public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Sendable {
+@MainActor
+public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Sendable {
     
+    /// Edit mode
+    @Environment(\.editMode) var editMode
+    /// Animating differences
+    @Environment(\.animatingDifferences) var animatingDifferences
+    /// Visual style/configuration of the collection view.
+    @Environment(\.style) var style
+    /// Content inset
+    @Environment(\.contentInset) var contentInset
+    /// Selected IndexPaths
+    @Environment(\.selectedIndexPaths) var selectedIndexPaths
+    /// Subject used to receive programmatic scroll commands.
+    @Environment(\.scrollTo) var scrollTo
+    /// Callback invoked on each `scrollViewDidScroll` with current content offset.
+    @Environment(\.onScroll) var onScroll
+    /// Async handler called on pull-to-refresh.
+    @Environment(\.pullToRefresh) var pullToRefresh
+    /// Async handler called when approaching the end of content (infinite scroll).
+    @Environment(\.loadMoreData) var loadMoreData
+    /// Callback invoked on item tapped
+    @Environment(\.onItemTap) var onItemTap
+    /// Query to decide if a section can be expanded or collapsed; `nil` disables expandable sections.
+    @Environment(\.canExpandSectionAt) var canExpandSectionAt
+    /// Predicate allowing the start of a drag from a given index.
+    @Environment(\.canMoveItemFrom) var canMoveItemFrom
+    /// Policy to determine if a proposed drop is allowed and with what intent.
+    @Environment(\.canMoveItemAt) var canMoveItemAt
+    /// Callback called after a move has been successfully applied in the datasource.
+    @Environment(\.moveItemAt) var moveItemAt
+
     /// Data organized as an array of sections. The single-section initializer wraps automatically.
     let data: [[T]]
     /// It has sections.
     let hasSections: Bool
-    /// Visual style/configuration of the collection view.
-    let style: CollectionViewStyle
-    /// Content inset
-    let contentInset: UIEdgeInsets
-    /// Animating differences
-    let animatingDifferences: Bool
     /// Builder returning the SwiftUI view to display in each cell.
     let content: (T) -> any View
-    /// Async handler called on pull-to-refresh.
-    let pullToRefresh: (() async -> Void)?
-    /// Async handler called when approaching the end of content (infinite scroll).
-    let loadMoreData: (() async -> Void)?
-    /// Callback invoked on item tapped
-    let onItemTap: ((T) -> Void)?
-    /// Callback invoked on each `scrollViewDidScroll` with current content offset.
-    let onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)?
-    /// Query to decide if a section can be expanded or collapsed; `nil` disables expandable sections.
-    let canExpandSectionAt: ((Int) -> ExpandableSection)?
-    /// Predicate allowing the start of a drag from a given index.
-    let canMoveItemFrom: ((IndexPath) -> Bool)?
-    /// Policy to determine if a proposed drop is allowed and with what intent.
-    let canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)?
-    /// Callback called after a move has been successfully applied in the datasource.
-    let moveItemAt: ((IndexPath, IndexPath) -> Void)?
-    /// Subject used to receive programmatic scroll commands.
-    let scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>?
     
     /// Creates a single-section collection view.
     /// - Parameters:
     ///   - items: Items for the single section.
-    ///   - style: Collection style; default is `.list`.
-    ///   - scrollTo: Optional subject for performing programmatic scrolling.
     ///   - content: SwiftUI builder for each cell.
-    ///   - pullToRefresh: Async handler for refresh (shows a `UIRefreshControl`).
-    ///   - loadMoreData: Async handler for incremental loading near the bottom.
-    ///   - onScroll: Callback for scroll updates.
-    ///   - canMoveItemFrom: Predicate to allow drag start.
-    ///   - canMoveItemAt: Drag & drop policy.
-    ///   - moveItemAt: Called after moving in snapshot.
-    public init(
-        _ items: [T],
-        style: CollectionViewStyle = .list,
-        contentInset: UIEdgeInsets = .zero,
-        animatingDifferences: Bool = true,
-        scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
-        @ViewBuilder content: @escaping (T) -> any View,
-        pullToRefresh: (() async -> Void)? = nil,
-        loadMoreData: (() async -> Void)? = nil,
-        onItemTap: ((T) -> Void)? = nil,
-        onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)? = nil,
-        canMoveItemFrom: ((IndexPath) -> Bool)? = nil,
-        canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
-        moveItemAt: ((IndexPath, IndexPath) -> Void)? = nil)
-    {
+    public init(_ items: [T], @ViewBuilder content: @escaping (T) -> any View) {
         hasSections = false
         self.data = [items]
-        self.style = style
-        self.contentInset = contentInset
-        self.animatingDifferences = animatingDifferences
-        self.scrollTo = scrollTo
         self.content = content
-        self.pullToRefresh = pullToRefresh
-        self.loadMoreData = loadMoreData
-        self.onItemTap = onItemTap
-        self.onScroll = onScroll
-        self.canExpandSectionAt = nil
-        self.canMoveItemFrom = canMoveItemFrom
-        self.canMoveItemAt = canMoveItemAt
-        self.moveItemAt = moveItemAt
     }
     
     /// Creates a multi-section collection view.
-    /// - Parameters are the same as the single-section initializer, but `items` are provided per section.
-    public init(
-        _ items: [[T]],
-        style: CollectionViewStyle = .list,
-        contentInset: UIEdgeInsets = .zero,
-        animatingDifferences: Bool = true,
-        scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil,
-        @ViewBuilder content: @escaping (T) -> any View,
-        pullToRefresh: (() async -> Void)? = nil,
-        loadMoreData: (() async -> Void)? = nil,
-        onItemTap: ((T) -> Void)? = nil,
-        onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)? = nil,
-        canExpandSectionAt: ((Int) -> ExpandableSection)? = nil,
-        canMoveItemFrom: ((IndexPath) -> Bool)? = nil,
-        canMoveItemAt: ((IndexPath, IndexPath) -> UICollectionViewDropProposal)? = nil,
-        moveItemAt: ((IndexPath, IndexPath) -> Void)? = nil)
-    {
+    /// - Parameters:
+    ///   - items: Items for the multiple section.
+    ///   - content: SwiftUI builder for each cell.
+    public init(_ items: [[T]], @ViewBuilder content: @escaping (T) -> any View) {
         hasSections = true
         self.data = items
-        self.style = style
-        self.contentInset = contentInset
-        self.animatingDifferences = animatingDifferences
-        self.scrollTo = scrollTo
         self.content = content
-        self.pullToRefresh = pullToRefresh
-        self.loadMoreData = loadMoreData
-        self.onItemTap = onItemTap
-        self.onScroll = onScroll
-        self.canExpandSectionAt = canExpandSectionAt
-        self.canMoveItemFrom = canMoveItemFrom
-        self.canMoveItemAt = canMoveItemAt
-        self.moveItemAt = moveItemAt
     }
     
     /// Builds and configures the underlying `UICollectionView`.
@@ -141,6 +88,7 @@ import Combine
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
         collectionView.allowsSelection = onItemTap != nil
+        collectionView.allowsMultipleSelection = selectedIndexPaths != nil
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.showsVerticalScrollIndicator = false
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -153,17 +101,15 @@ import Combine
             collectionView.contentInset.bottom = -top
         }
         
+        let mode = editMode?.wrappedValue.isEditing ?? false
         collectionView.delegate = context.coordinator
         if moveItemAt != nil {
             collectionView.dragDelegate = context.coordinator
             collectionView.dropDelegate = context.coordinator
-            collectionView.dragInteractionEnabled = true
+            collectionView.dragInteractionEnabled = mode
         }
         
-        if pullToRefresh != nil {
-            context.coordinator.refreshControl = .init()
-        }
-        
+        context.coordinator.editMode = mode
         context.coordinator.configure(collectionView)
 
         return collectionView
@@ -171,6 +117,14 @@ import Combine
     
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
+        let mode = editMode?.wrappedValue.isEditing ?? false
+        uiView.dragInteractionEnabled = mode
+
+        guard context.coordinator.editMode == mode else {
+            context.coordinator.editMode = mode
+            context.coordinator.reloadSnapshot()
+            return
+        }
         context.coordinator.makeSnapshot(items: data)
     }
     
@@ -185,14 +139,22 @@ import Combine
 
 @available(iOS 17.0, *)
 #Preview("List") {
+    struct Item: Identifiable, Hashable, Equatable {
+        let id: Int
+        var isSelected: Bool
+        let isSection: Bool
+    }
     struct ListView: View {
-        
-        let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
-        @State var items: [[ItemModel]] = Dictionary(grouping: 0..<100) { $0 / 10 }
+        @State var items: [[Item]] = Dictionary(grouping: 0..<100) { $0 / 10 }
             .sorted { $0.key < $1.key }
-            .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
+            .map { v in
+                v.value.map { i in
+                    Item(id: i, isSelected: false, isSection: v.value.first == i)
+                }
+            }
+        let scrollTo = PassthroughSubject<CollectionViewScrollTo, Never>()
         @State var isBusy = false
-
+        
         var body: some View {
             VStack {
                 Menu("Scroll to") {
@@ -203,59 +165,83 @@ import Combine
                         }
                     }
                 }
-
-                CollectionView(items, scrollTo: scrollTo) { model in
+                
+                CollectionView(items) { model in
                     
-                    ListItemView(item: model)
-                        .swipeActions(allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                guard let index = getIndex(model) else { return }
-                                items[index.section].remove(at: index.row)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                    if model == items.first?.first {
+                        CollectionView(Array(0...11)) { i in
+                            Text("Item \(i)")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
                         }
-                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                guard let index = getIndex(model) else { return }
-                                items[index.section][index.row].isSelected.toggle()
-                            } label: {
-                                Label("Pin", systemImage: "pin.fill")
+                        .style(.carousel(layout: .three, spacing: 4))
+                        .frame(height: 300)
+                    } else if model.isSection {
+                        Text("Section \(model.id.description)")
+                            .bold()
+                            .padding(10)
+                    } else {
+                        Text("Item \(model.id.description)")
+                            .foregroundStyle(model.isSelected ? .yellow : .black)
+                            .padding(10)
+                            .swipeActions(allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    guard let index = getIndex(model) else { return }
+                                    items[index.section].remove(at: index.row)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             }
-                            .tint(.yellow)
-                        }
-
-                } pullToRefresh: {
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    guard let index = getIndex(model) else { return }
+                                    items[index.section][index.row].isSelected.toggle()
+                                } label: {
+                                    Label("Pin", systemImage: "pin.fill")
+                                }
+                                .tint(.yellow)
+                            }
+                    }
+                    
+                }
+                .scrollTo(scrollTo)
+                .pullToRefresh {
                     
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     
-                } loadMoreData: {
-
+                }
+                .loadMoreData {
+                    
                     await loadMore()
                     
-                } onScroll: { offset, contentHeight in
-
+                }
+                .onScroll { offset, contentHeight in
+                    
                     print(abs(offset.y), contentHeight.height)
                     
-                } canExpandSectionAt: { section in
-
-                    section < 10 ? .expanded : section < 20 ? .collapsed : .none
-
-                } canMoveItemFrom: { from in
-
-                    from.section < 10
+                }
+                .canExpandSectionAt { section in
                     
-                } canMoveItemAt: { from, to in
+                    section == 0 ? .none : section < 5 ? .expanded : .collapsed
+                    
+                }
+                .canMoveItemFrom { from in
+                    
+                    !(from.section == 0 && from.row == 1)
+                    
+                }
+                .canMoveItemAt { from, to in
                     
                     guard to.section == 1 else {
                         return .init(operation: .forbidden)
                     }
                     return .init(operation: .move, intent: .insertAtDestinationIndexPath)
                     
-                } moveItemAt: { from, to in
+                }
+                .moveItemAt { from, to in
                     
                     print("moveItemAt:", from, to)
-
+                    
                 }
             }
             .overlay(
@@ -268,60 +254,29 @@ import Combine
             .edgesIgnoringSafeArea(.bottom)
         }
         
-        //MARK: - Functions
-
-        private func getIndex(_ item: ItemModel) -> IndexPath? {
+        func getIndex(_ item: Item) -> IndexPath? {
             guard let section = items.firstIndex(where: { $0.firstIndex(where: { item.id == $0.id }) != nil }) else { return nil }
-                guard let row = items[section].firstIndex(where: { item.id == $0.id }) else { return nil }
-                return .init(row: row, section: section)
+            guard let row = items[section].firstIndex(where: { item.id == $0.id }) else { return nil }
+            return .init(row: row, section: section)
         }
         
-        private func loadMore() async {
+        func loadMore() async {
             guard !isBusy else { return }
             isBusy = true
-
+            
             let count = items.count * 10
+            print(items.count, "-->", count)
             let data = Dictionary(grouping: count..<count+100) { $0 / 10 }
                 .sorted { $0.key < $1.key }
-                .map { v in v.value.map { i in ItemModel(id: i, isSelected: false, isSection: v.value.first == i) } }
+                .map { v in v.value.map { i in Item(id: i, isSelected: false, isSection: v.value.first == i) } }
             
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             isBusy = false
             
             items.append(contentsOf: data)
         }
-        
-        //MARK: - Model
-
-        struct ItemModel: Hashable, Sendable {
-            let id: Int
-            var isSelected: Bool
-            let isSection: Bool
-        }
-
-        //MARK: - Cell
-
-        struct ListItemView: View {
-            let item: ItemModel
-            
-            var body: some View {
-                Group {
-                    if item.isSection {
-                        Text("Header \(item.id)")
-                            .font(.headline)
-                            .bold()
-                    } else {
-                        Text("Item \(item.id)")
-                    }
-                }
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .foregroundColor(item.isSelected ? Color.yellow : Color.black)
-            }
-        }
     }
-
-    return ListView()
+    return ListView().tint(.orange)
 }
 
 #Preview("Collection") {
@@ -330,39 +285,44 @@ import Combine
     ]
     
     VStack(spacing: 50) {
-        CollectionView(data, style: .collection(size: .init(width: 120, height: 50), spacing: 8, direction: .horizontal), contentInset: .init(top: 0, left: 16, bottom: 0, right: 16)) { model in
+        CollectionView(data) { model in
             Text(model.description)
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50)
                 .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
         }
+        .style(.collection(size: .init(width: 120, height: 50), spacing: 8, direction: .horizontal))
+        .contentInset(.init(top: 0, left: 16, bottom: 0, right: 16))
         .frame(height: 60)
 
-        CollectionView(data, style: .collection(size: .init(width: 120, height: 50), spacing: 8)) { model in
+        CollectionView(data) { model in
             Text(model)
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity, maxHeight: 50)
                 .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
         }
+        .style(.collection(size: .init(width: 120, height: 50), spacing: 8))
         .padding()
     }
 }
 
 #Preview("Carousel") {
-    CollectionView(Array(1...9), style: .carousel(layout: .one, spacing: 10, padding: 16, pageControl: .minimal(.orange))) { model in
+    CollectionView(Array(1...9)) { model in
         Text("Item \(model)")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
     }
+    .style(.carousel(layout: .three, spacing: 10, padding: 16, pageControl: .minimal(.orange)))
     .frame(height: 300)
 }
 
 #Preview("Grid") {
-    CollectionView(Array(1...30), style: .grid(numOfColumns: 3, heightOfRow: 50, spacing: 8)) { model in
+    CollectionView(Array(1...30)) { model in
         Text("Item \(model)")
-            .frame(maxWidth: .infinity, maxHeight: 50)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerSize: .init(width: 8, height: 8)).fill(.orange))
     }
+    .style(.grid(numOfColumns: 3, heightOfRow: 50, spacing: 8))
     .padding()
 }
 
