@@ -27,7 +27,7 @@ extension CollectionView {
         var refreshControl: UIRefreshControl?
         /// Lazily created page control (present only if `pageControl` is provided).
         var pageControl: UIPageControl?
-        
+        /// Edit mode
         var editMode: Bool = false
 
         init(_ parent: CollectionView) {
@@ -42,15 +42,15 @@ extension CollectionView {
             
             // Subscribes to programmatic scroll commands.
             if let scrollTo = parent.scrollTo {
+                let animated = parent.animatingDifferences
                 scrollTo
                     .receive(on: DispatchQueue.main)
-                    .sink { [weak collectionView] value in
-                        guard let collectionView else { return }
+                    .sink { value in
                         switch value {
                         case .offset(let contentOffset):
-                            collectionView.setContentOffset(contentOffset, animated: true)
+                            collectionView.setContentOffset(contentOffset, animated: animated)
                         case .item(let indexPath, let position):
-                            collectionView.scrollToItem(at: indexPath, at: position, animated: true)
+                            collectionView.scrollToItem(at: indexPath, at: position, animated: animated)
                         }
                     }
                     .store(in: &cancellables)
@@ -137,23 +137,8 @@ extension CollectionView {
                 let view = parent.content(item)
                 cellContentConfiguration(cell, view)
                 
-                // Configures accessories: disclosure for expandable nodes, reorder handle if drag is allowed.
-                let section: T
-                if #available(iOS 15.0, *) {
-                    guard let s = dataSource.sectionIdentifier(for: indexPath.section) else { return }
-                    section = s
-                } else {
-                    let snapshot = dataSource.snapshot()
-                    guard snapshot.sectionIdentifiers.indices.contains(indexPath.section) else { return }
-                    section = snapshot.sectionIdentifiers[indexPath.section]
-                }
-                
-                let snap = dataSource.snapshot(for: section)
-                let snap2 = snap.snapshot(of: item, includingParent: false)
-                let hasChildren = snap2.items.count > 0
-                
                 var accessories: [UICellAccessory] = []
-                if hasChildren {
+                if indexPath.row == 0, let canExpandSectionAt = parent.canExpandSectionAt, canExpandSectionAt(indexPath.section) != .none {
                     accessories.append(.outlineDisclosure())
                 } else if editMode {
                     if parent.canMoveItemFrom?(indexPath) == true {
@@ -191,7 +176,7 @@ extension CollectionView {
             if #available(iOS 15.0, *) {
                 dataSource.applySnapshotUsingReloadData(snapshot)
             } else {
-                // Fallback on earlier versions
+                self.dataSource.apply(snapshot, animatingDifferences: false)
             }
         }
         

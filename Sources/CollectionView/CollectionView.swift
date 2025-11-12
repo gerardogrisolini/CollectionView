@@ -154,31 +154,29 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
         @State var isBusy = false
         
         var body: some View {
-            VStack {
-                Menu("Scroll to") {
-                    Button("Top") { scrollTo.send(.offset(.zero)) }
-                    ForEach(items.indices, id: \.self) { i in
-                        Button("Header \(items[i][0].id)") {
-                            scrollTo.send(.item(IndexPath(row: 0, section: i), position: .top))
-                        }
-                    }
-                }
-                
+            NavigationStack {
                 CollectionView(items) { model in
                     
                     if model == items.first?.first {
+                        
                         CollectionView(Array(0...11)) { i in
                             Text("Item \(i)")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
                         }
                         .style(.carousel(layout: .three, spacing: 4, padding: 8))
+                        .scrollTo(nil)
+                        .canMoveItemFrom(nil)
                         .frame(height: 300)
+                        
                     } else if model.isSection {
+                        
                         Text("Section \(model.id.description)")
                             .bold()
                             .padding(10)
+                        
                     } else {
+                    
                         Text("Item \(model.id.description)")
                             .foregroundStyle(model.isSelected ? .yellow : .black)
                             .padding(10)
@@ -225,7 +223,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
                 }
                 .canMoveItemFrom { from in
                     
-                    !(from.section == 0 && from.row == 1)
+                    from.row > 0
                     
                 }
                 .canMoveItemAt { from, to in
@@ -241,15 +239,30 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
                     print("moveItemAt:", from, to)
                     
                 }
-            }
-            .overlay(
-                Group {
-                    if isBusy {
-                        ProgressView().controlSize(.extraLarge)
+                .overlay(
+                    Group {
+                        if isBusy {
+                            ProgressView().controlSize(.extraLarge)
+                        }
+                    }
+                )
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Menu("Scroll to") {
+                            Button("Top") { scrollTo.send(.offset(.zero)) }
+                            ForEach(items.indices, id: \.self) { i in
+                                Button("Section \(items[i][0].id)") {
+                                    scrollTo.send(.item(IndexPath(row: 0, section: i), position: .top))
+                                }
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        EditButton()
                     }
                 }
-            )
-            .edgesIgnoringSafeArea(.bottom)
+                .edgesIgnoringSafeArea(.bottom)
+            }
         }
         
         func getIndex(_ item: Item) -> IndexPath? {
