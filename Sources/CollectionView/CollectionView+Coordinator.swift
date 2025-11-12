@@ -322,13 +322,6 @@ extension CollectionView {
         }
         
         private func selection(_ collectionView: UICollectionView, _ indexPath: IndexPath) {
-            if let onItemTap = parent.onItemTap {
-//                let snapshot = dataSource.snapshot()
-//                let item = snapshot.itemIdentifiers(inSection: snapshot.sectionIdentifiers[indexPath.section])[indexPath.row]
-                let item = parent.data[indexPath.section][indexPath.row]
-                onItemTap(item)
-            }
-
             guard editMode else { return }
             parent.selectedIndexPaths?.wrappedValue = collectionView.indexPathsForSelectedItems ?? []
         }

@@ -41,8 +41,6 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     @Environment(\.pullToRefresh) var pullToRefresh
     /// Async handler called when approaching the end of content (infinite scroll).
     @Environment(\.loadMoreData) var loadMoreData
-    /// Callback invoked on item tapped
-    @Environment(\.onItemTap) var onItemTap
     /// Query to decide if a section can be expanded or collapsed; `nil` disables expandable sections.
     @Environment(\.canExpandSectionAt) var canExpandSectionAt
     /// Predicate allowing the start of a drag from a given index.
@@ -87,7 +85,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
         let collectionViewLayout = context.coordinator.makeLayout(style: style)
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
-        collectionView.allowsSelection = onItemTap != nil
+        collectionView.allowsSelection = false
         collectionView.allowsMultipleSelection = selectedIndexPaths != nil
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.showsVerticalScrollIndicator = false
@@ -174,7 +172,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
                         }
-                        .style(.carousel(layout: .three, spacing: 4))
+                        .style(.carousel(layout: .three, spacing: 4, padding: 8))
                         .frame(height: 300)
                     } else if model.isSection {
                         Text("Section \(model.id.description)")
