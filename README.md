@@ -17,7 +17,7 @@ This library provides a seamless integration of UIKit's powerful UICollectionVie
 
 ```
 dependencies: [
-    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "2.0.0")
+    .package(url: "https://github.com/gerardogrisolini/CollectionView.git", from: "2.0.1")
 ]
 ```
 
@@ -191,6 +191,8 @@ struct ContentView: View {
                             .background(RoundedRectangle(cornerSize: .init(width: 4, height: 4)).fill(.orange))
                     }
                     .style(.carousel(layout: .three, spacing: 4))
+                    .scrollTo(nil)
+                    .canMoveItemFrom(nil)
                     .frame(height: 300)
                 } else if model.isSection {
                     Text("Section \(model.id.description)")
@@ -243,7 +245,7 @@ struct ContentView: View {
             }
             .canMoveItemFrom { from in
                 
-                !(from.section == 0 && from.row == 1)
+                from.row > 0
                 
             }
             .canMoveItemAt { from, to in
