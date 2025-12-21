@@ -99,15 +99,14 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
             collectionView.contentInset.bottom = -top
         }
         
-        let mode = editMode?.wrappedValue.isEditing ?? false
         collectionView.delegate = context.coordinator
         if moveItemAt != nil {
             collectionView.dragDelegate = context.coordinator
             collectionView.dropDelegate = context.coordinator
-            collectionView.dragInteractionEnabled = mode
+            collectionView.dragInteractionEnabled = true
         }
         
-        context.coordinator.editMode = mode
+        context.coordinator.editMode = editMode?.wrappedValue.isEditing ?? false
         context.coordinator.configure(collectionView)
 
         return collectionView
@@ -116,7 +115,6 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
         let mode = editMode?.wrappedValue.isEditing ?? false
-        uiView.dragInteractionEnabled = mode
 
         guard context.coordinator.editMode == mode else {
             context.coordinator.editMode = mode

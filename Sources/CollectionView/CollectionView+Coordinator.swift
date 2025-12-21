@@ -64,6 +64,7 @@ extension CollectionView {
                 collectionView.refreshControl = refreshControl
             } else if parent.loadMoreData != nil {
                 refreshControl = .init()
+                refreshControl?.addTarget(self, action: #selector(refreshControl?.endRefreshing), for: .valueChanged)
                 collectionView.refreshControl = refreshControl
             }
         }
@@ -133,7 +134,7 @@ extension CollectionView {
         private func makeCellRegistration() -> UICollectionView.CellRegistration<CustomCollectionViewCell, T> {
             UICollectionView.CellRegistration<CustomCollectionViewCell, T> { [weak self] (cell, indexPath, item) in
                 guard let self else { return }
-                // Renders SwiftUI content in the cell using `UIHostingConfiguration` (iOS 16+) or a hosting controller.
+                
                 let view = parent.content(item)
                 cellContentConfiguration(cell, view)
                 
