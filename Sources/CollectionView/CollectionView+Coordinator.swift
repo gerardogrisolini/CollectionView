@@ -58,15 +58,11 @@ extension CollectionView {
         }
         
         private func addRefreshControl(to collectionView: UICollectionView) {
-            if parent.pullToRefresh != nil {
-                refreshControl = .init()
-                refreshControl?.addTarget(self, action: #selector(reloadData), for: .valueChanged)
-                collectionView.refreshControl = refreshControl
-            } else if parent.loadMoreData != nil {
-                refreshControl = .init()
-                refreshControl?.addTarget(self, action: #selector(refreshControl?.endRefreshing), for: .valueChanged)
-                collectionView.refreshControl = refreshControl
-            }
+            guard parent.pullToRefresh != nil || parent.loadMoreData != nil  else { return }
+
+            refreshControl = .init()
+            refreshControl!.addTarget(self, action: #selector(reloadData), for: .valueChanged)
+            collectionView.refreshControl = refreshControl
         }
         
         private func addPageControl(to collectionView: UICollectionView) {
@@ -280,11 +276,14 @@ extension CollectionView {
 
         /// Called by the refresh control to execute the async refresh handler.
         @objc func reloadData() {
-            guard let refreshControl = refreshControl, let pullToRefresh = parent.pullToRefresh else { return }
-            Task { @MainActor in
-                refreshControl.beginRefreshing()
+            guard let pullToRefresh = parent.pullToRefresh else {
+                refreshControl?.endRefreshing()
+                return
+            }
+            Task { @MainActor [refreshControl] in
+                refreshControl?.beginRefreshing()
                 await pullToRefresh()
-                refreshControl.endRefreshing()
+                refreshControl?.endRefreshing()
             }
         }
 
