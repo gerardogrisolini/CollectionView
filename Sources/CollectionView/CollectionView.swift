@@ -33,6 +33,8 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     @Environment(\.contentInset) var contentInset
     /// Selected IndexPaths
     @Environment(\.selectedIndexPaths) var selectedIndexPaths
+    /// Scroll enabled
+    @Environment(\.isScrollEnabled) var isScrollEnabled
     /// Subject used to receive programmatic scroll commands.
     @Environment(\.scrollTo) var scrollTo
     /// Callback invoked on each `scrollViewDidScroll` with current content offset.
@@ -85,6 +87,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
         let collectionViewLayout = context.coordinator.makeLayout(style: style)
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
+        collectionView.isScrollEnabled = isScrollEnabled
         collectionView.allowsSelection = false
         collectionView.allowsMultipleSelection = selectedIndexPaths != nil
         collectionView.showsHorizontalScrollIndicator = false

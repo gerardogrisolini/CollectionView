@@ -12,6 +12,7 @@ extension EnvironmentValues {
     @Entry var animatingDifferences: Bool = true
     @Entry var style: CollectionViewStyle = .list
     @Entry var contentInset: UIEdgeInsets = .zero
+    @Entry var isScrollEnabled: Bool = true
     @Entry var scrollTo: PassthroughSubject<CollectionViewScrollTo, Never>? = nil
     @Entry var onScroll: ((_ value: CGPoint, _ contentSize: CGSize) -> Void)? = nil
     @Entry var pullToRefresh: (() async -> Void)? = nil
@@ -40,6 +41,11 @@ extension View {
         environment(\.contentInset, inset)
     }
     
+    ///   - isScrollEnabled: Scroll enabled.
+    public func isScrollEnabled(_ enabled: Bool) -> some View {
+        environment(\.isScrollEnabled, enabled)
+    }
+
     ///   - scrollTo: Optional subject for performing programmatic scrolling.
     public func scrollTo(_ action: PassthroughSubject<CollectionViewScrollTo, Never>?) -> some View {
         environment(\.scrollTo, action)
