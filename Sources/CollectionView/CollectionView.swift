@@ -21,7 +21,7 @@ import Combine
 ///
 /// Provide your items and a SwiftUI content builder to render each cell.
 @MainActor
-public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Sendable {
+public struct CollectionView<T, Content>: UIViewRepresentable where T: Hashable, T: Sendable, Content: View {
     
     /// Edit mode
     @Environment(\.editMode) var editMode
@@ -57,13 +57,13 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     /// It has sections.
     let hasSections: Bool
     /// Builder returning the SwiftUI view to display in each cell.
-    let content: (T) -> any View
+    let content: (T) -> Content
     
     /// Creates a single-section collection view.
     /// - Parameters:
     ///   - items: Items for the single section.
     ///   - content: SwiftUI builder for each cell.
-    public init(_ items: [T], @ViewBuilder content: @escaping (T) -> any View) {
+    public init(_ items: [T], @ViewBuilder content: @escaping (T) -> Content) {
         hasSections = false
         self.data = [items]
         self.content = content
@@ -73,7 +73,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     /// - Parameters:
     ///   - items: Items for the multiple section.
     ///   - content: SwiftUI builder for each cell.
-    public init(_ items: [[T]], @ViewBuilder content: @escaping (T) -> any View) {
+    public init(_ items: [[T]], @ViewBuilder content: @escaping (T) -> Content) {
         hasSections = true
         self.data = items
         self.content = content
@@ -82,25 +82,23 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     /// Builds and configures the underlying `UICollectionView`.
     /// Sets delegate, optional drag & drop, refresh control, and initial layout.
     public func makeUIView(context: Context) -> UICollectionView {
-        
+        let mode = editMode?.wrappedValue.isEditing ?? false
+
         // Selects the appropriate compositional layout based on the requested style.
         let collectionViewLayout = context.coordinator.makeLayout(style: style)
+        context.coordinator.layoutSignature = layoutSignature(for: style)
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
+        let allowsSelection = mode && selectedIndexPaths != nil
         collectionView.isScrollEnabled = isScrollEnabled
-        collectionView.allowsSelection = false
-        collectionView.allowsMultipleSelection = selectedIndexPaths != nil
+        collectionView.allowsSelection = allowsSelection
+        collectionView.allowsMultipleSelection = allowsSelection
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.showsVerticalScrollIndicator = false
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
-        collectionView.contentInset = contentInset
-        
-        if case .carousel(_, _, _, _, let ignoreSafeArea) = style, ignoreSafeArea, let top = UIApplication.shared.windows.first?.safeAreaInsets.top
-        {
-            collectionView.contentInset.top = -top
-            collectionView.contentInset.bottom = -top
-        }
+        let makeSafeAreaTop = collectionView.window?.safeAreaInsets.top ?? collectionView.safeAreaInsets.top
+        collectionView.contentInset = adjustedContentInset(base: contentInset, style: style, safeAreaTop: makeSafeAreaTop)
         
         collectionView.delegate = context.coordinator
         if moveItemAt != nil {
@@ -109,7 +107,7 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
             collectionView.dragInteractionEnabled = true
         }
         
-        context.coordinator.editMode = editMode?.wrappedValue.isEditing ?? false
+        context.coordinator.editMode = mode
         context.coordinator.configure(collectionView)
 
         return collectionView
@@ -117,7 +115,32 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
+        context.coordinator.parent = self
         let mode = editMode?.wrappedValue.isEditing ?? false
+        let allowsSelection = mode && selectedIndexPaths != nil
+        
+        uiView.isScrollEnabled = isScrollEnabled
+        uiView.allowsSelection = allowsSelection
+        uiView.allowsMultipleSelection = allowsSelection
+        let updateSafeAreaTop = uiView.window?.safeAreaInsets.top ?? uiView.safeAreaInsets.top
+        uiView.contentInset = adjustedContentInset(base: contentInset, style: style, safeAreaTop: updateSafeAreaTop)
+        
+        if moveItemAt != nil {
+            uiView.dragDelegate = context.coordinator
+            uiView.dropDelegate = context.coordinator
+            uiView.dragInteractionEnabled = true
+        } else {
+            uiView.dragDelegate = nil
+            uiView.dropDelegate = nil
+            uiView.dragInteractionEnabled = false
+        }
+        context.coordinator.syncRuntimeConfiguration(uiView)
+        
+        let signature = layoutSignature(for: style)
+        if context.coordinator.layoutSignature != signature {
+            uiView.setCollectionViewLayout(context.coordinator.makeLayout(style: style), animated: false)
+            context.coordinator.layoutSignature = signature
+        }
 
         guard context.coordinator.editMode == mode else {
             context.coordinator.editMode = mode
@@ -130,6 +153,58 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     /// Creates the coordinator responsible for datasource, delegate, and subscriptions.
     public func makeCoordinator() -> Coordinator {
         Coordinator(self)
+    }
+
+    func layoutSignature(for style: CollectionViewStyle) -> String {
+        switch style {
+        case .list:
+            return "list-\(layoutContextSignature)"
+        case .collection(let size, let spacing, let direction):
+            return "collection-\(size.width)-\(size.height)-\(spacing)-\(direction.rawValue)-\(layoutContextSignature)"
+        case .grid(let columns, let rowHeight, let spacing):
+            return "grid-\(columns)-\(rowHeight)-\(spacing)-\(layoutContextSignature)"
+        case .carousel(let layout, let spacing, let padding, let pageControl, let ignoreSafeArea):
+            let pageControlSignature: String
+            switch pageControl {
+            case .none:
+                pageControlSignature = "none"
+            case .some(.minimal(let color)):
+                pageControlSignature = "minimal-\(colorSignature(color))"
+            case .some(.prominent(let color)):
+                pageControlSignature = "prominent-\(colorSignature(color))"
+            }
+            return "carousel-\(layout.rawValue)-\(spacing)-\(padding)-\(ignoreSafeArea)-\(pageControlSignature)-\(layoutContextSignature)"
+        case .custom(let layout):
+            return "custom-\(ObjectIdentifier(layout).hashValue)-\(layoutContextSignature)"
+        }
+    }
+
+    func adjustedContentInset(base: UIEdgeInsets, style: CollectionViewStyle, safeAreaTop: CGFloat) -> UIEdgeInsets {
+        guard case .carousel(_, _, _, _, let ignoreSafeArea) = style, ignoreSafeArea else {
+            return base
+        }
+        var adjusted = base
+        adjusted.top = -safeAreaTop
+        adjusted.bottom = -safeAreaTop
+        return adjusted
+    }
+
+    private var layoutContextSignature: String {
+        "\(hasSections)-\(canExpandSectionAt != nil)-\(moveItemAt != nil)"
+    }
+
+    private func colorSignature(_ color: UIColor?) -> String {
+        guard let color else { return "nil" }
+        let resolved = color.resolvedColor(with: .current)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        if resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return "\(red)-\(green)-\(blue)-\(alpha)"
+        }
+        let components = resolved.cgColor.components?.map(String.init(describing:)) ?? []
+        return components.joined(separator: ",")
     }
 }
 
@@ -338,3 +413,76 @@ public struct CollectionView<T>: UIViewRepresentable where T: Hashable, T: Senda
     .padding()
 }
 
+@available(iOS 17.0, *)
+#Preview("Regression - First Cell Action") {
+    struct DemoItem: Hashable, Sendable {
+        let id: Int
+        let title: String
+        let actionTag: String
+    }
+
+    struct RegressionPreview: View {
+        @State private var useVariantA = true
+        @State private var lastActionTag: String = "-"
+
+        private var items: [DemoItem] {
+            if useVariantA {
+                return [
+                    .init(id: 100, title: "First A", actionTag: "ACTION_A"),
+                    .init(id: 2, title: "Second", actionTag: "SECOND"),
+                    .init(id: 3, title: "Third", actionTag: "THIRD"),
+                    .init(id: 4, title: "Fourth", actionTag: "FOURTH")
+                ]
+            } else {
+                return [
+                    .init(id: 200, title: "First B", actionTag: "ACTION_B"),
+                    .init(id: 2, title: "Second", actionTag: "SECOND"),
+                    .init(id: 3, title: "Third", actionTag: "THIRD"),
+                    .init(id: 4, title: "Fourth", actionTag: "FOURTH")
+                ]
+            }
+        }
+
+        private var expectedFirstAction: String {
+            items[0].actionTag
+        }
+
+        var body: some View {
+            VStack(spacing: 12) {
+                HStack {
+                    Button("Toggle Variant") {
+                        useVariantA.toggle()
+                    }
+                    Spacer()
+                    Text("Expected first: \(expectedFirstAction)")
+                        .font(.caption)
+                }
+
+                Text("Last action: \(lastActionTag)")
+                    .fontWeight(lastActionTag == expectedFirstAction ? .regular : .bold)
+                    .foregroundColor(lastActionTag == expectedFirstAction ? .primary : .red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                CollectionView(items) { model in
+                    Button {
+                        lastActionTag = model.actionTag
+                    } label: {
+                        HStack {
+                            Text(model.title)
+                            Spacer()
+                            Text(model.actionTag).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .padding(.horizontal, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(.orange.opacity(0.15)))
+                }
+                .style(.list)
+            }
+            .padding()
+        }
+    }
+
+    return RegressionPreview()
+}

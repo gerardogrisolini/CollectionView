@@ -63,8 +63,7 @@ final class HostingContentView<Content: View>: UIView, UIContentView {
         }
     }
 
-    private var hostingController: UIHostingController<AnyView>!
-    private var hostingView: UIView { hostingController.view }
+    private var hostingController: UIHostingController<Content>!
     private var currentState = UICellConfigurationState(traitCollection: UITraitCollection.current)
 
     init(configuration: HostingConfiguration<Content>) {
@@ -78,7 +77,10 @@ final class HostingContentView<Content: View>: UIView, UIContentView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func setupHostingController() {
-        hostingController = UIHostingController(rootView: AnyView(EmptyView()))
+        guard let config = configuration as? HostingConfiguration<Content> else {
+            preconditionFailure("Invalid content configuration type")
+        }
+        hostingController = UIHostingController(rootView: config.makeView(currentState))
         hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         hostingController.view.backgroundColor = .clear
         addSubview(hostingController.view)
@@ -90,7 +92,7 @@ final class HostingContentView<Content: View>: UIView, UIContentView {
 
         // Build the SwiftUI view (optionally state-aware)
         let view = configuration.makeView(currentState)
-        hostingController.rootView = AnyView(view)
+        hostingController.rootView = view
         setNeedsLayout()
     }
 
@@ -98,7 +100,11 @@ final class HostingContentView<Content: View>: UIView, UIContentView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        attachToNearestViewControllerIfNeeded()
+        if window == nil {
+            detachFromParentViewControllerIfNeeded()
+        } else {
+            attachToNearestViewControllerIfNeeded()
+        }
     }
 
     private func attachToNearestViewControllerIfNeeded() {
@@ -107,6 +113,12 @@ final class HostingContentView<Content: View>: UIView, UIContentView {
         guard let vc = nearestViewController() else { return }
         vc.addChild(hostingController)
         hostingController.didMove(toParent: vc)
+    }
+
+    private func detachFromParentViewControllerIfNeeded() {
+        guard hostingController.parent != nil else { return }
+        hostingController.willMove(toParent: nil)
+        hostingController.removeFromParent()
     }
 
     private func nearestViewController() -> UIViewController? {
@@ -136,4 +148,3 @@ final class HostingContentView<Content: View>: UIView, UIContentView {
         systemLayoutSizeFitting(size)
     }
 }
-

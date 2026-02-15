@@ -11,6 +11,11 @@ extension CollectionView {
 
     /// A list cell that expands vertically to fit the hosted SwiftUI content.
     class CustomCollectionViewCell: UICollectionViewListCell {
+        override func prepareForReuse() {
+            super.prepareForReuse()
+            contentConfiguration = nil
+            accessories = []
+        }
         
         override func systemLayoutSizeFitting(
             _ targetSize: CGSize,

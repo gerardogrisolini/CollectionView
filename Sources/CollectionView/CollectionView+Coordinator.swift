@@ -19,16 +19,24 @@ extension CollectionView {
 
     public class Coordinator: NSObject, UICollectionViewDelegate, UICollectionViewDragDelegate, UICollectionViewDropDelegate {
         
-        /// Combine dispose bag. Subscriptions auto-cancel on dealloc; manual cancellation is unnecessary.
-        private var cancellables: Set<AnyCancellable> = []
         /// Parent
-        let parent: CollectionView
+        var parent: CollectionView
         /// Lazily created refresh control (present only if `pullToRefresh` is provided).
         var refreshControl: UIRefreshControl?
         /// Lazily created page control (present only if `pageControl` is provided).
         var pageControl: UIPageControl?
+        /// Active scroll subscription.
+        private var scrollToCancellable: AnyCancellable?
+        /// Identity of the subscribed scroll subject.
+        private var scrollToIdentity: ObjectIdentifier?
+        /// Last animation flag used by scroll subscription.
+        private var scrollToAnimated: Bool?
         /// Edit mode
         var editMode: Bool = false
+        /// Signature of the currently applied layout style.
+        var layoutSignature: String?
+        /// Header registration reused when supplementary headers are enabled.
+        private var headerCellRegistration: UICollectionView.SupplementaryRegistration<CustomCollectionViewCell>?
 
         init(_ parent: CollectionView) {
             self.parent = parent
@@ -37,42 +45,92 @@ extension CollectionView {
         /// Configures datasource, supplementary views, and subscribes to programmatic scroll commands.
         func configure(_ collectionView: UICollectionView) {
             configureDataSource(collectionView)
-            addPageControl(to: collectionView)
-            addRefreshControl(to: collectionView)
-            
-            // Subscribes to programmatic scroll commands.
-            if let scrollTo = parent.scrollTo {
-                let animated = parent.animatingDifferences
-                scrollTo
-                    .receive(on: DispatchQueue.main)
-                    .sink { value in
-                        switch value {
-                        case .offset(let contentOffset):
-                            collectionView.setContentOffset(contentOffset, animated: animated)
-                        case .item(let indexPath, let position):
-                            collectionView.scrollToItem(at: indexPath, at: position, animated: animated)
-                        }
-                    }
-                    .store(in: &cancellables)
-            }
+            syncRuntimeConfiguration(collectionView)
         }
         
-        private func addRefreshControl(to collectionView: UICollectionView) {
-            guard parent.pullToRefresh != nil || parent.loadMoreData != nil  else { return }
+        func syncRuntimeConfiguration(_ collectionView: UICollectionView) {
+            configureSupplementaryProvider()
+            configurePageControl(on: collectionView)
+            configureRefreshControl(on: collectionView)
+            configureScrollSubscription(on: collectionView)
+        }
+        
+        private func configureScrollSubscription(on collectionView: UICollectionView) {
+            guard let scrollTo = parent.scrollTo else {
+                scrollToCancellable?.cancel()
+                scrollToCancellable = nil
+                scrollToIdentity = nil
+                scrollToAnimated = nil
+                return
+            }
+            
+            let identity = ObjectIdentifier(scrollTo)
+            let animated = parent.animatingDifferences
+            guard scrollToIdentity != identity || scrollToAnimated != animated else { return }
+            
+            scrollToCancellable?.cancel()
+            scrollToIdentity = identity
+            scrollToAnimated = animated
+            scrollToCancellable = scrollTo
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self, weak collectionView] value in
+                    guard let self, let collectionView else { return }
+                    switch value {
+                    case .offset(let contentOffset):
+                        collectionView.setContentOffset(contentOffset, animated: animated)
+                    case .item(let indexPath, let position):
+                        guard self.isValid(indexPath: indexPath) else { return }
+                        collectionView.scrollToItem(at: indexPath, at: position, animated: animated)
+                    }
+                }
+        }
 
-            refreshControl = .init()
-            refreshControl!.addTarget(self, action: #selector(reloadData), for: .valueChanged)
+        private func isValid(indexPath: IndexPath) -> Bool {
+            let snapshot = dataSource.snapshot()
+            guard snapshot.sectionIdentifiers.indices.contains(indexPath.section) else { return false }
+            let section = snapshot.sectionIdentifiers[indexPath.section]
+            let rowsCount = snapshot.numberOfItems(inSection: section)
+            return indexPath.row >= 0 && indexPath.row < rowsCount
+        }
+        
+        private func configureRefreshControl(on collectionView: UICollectionView) {
+            let needsRefreshControl = parent.pullToRefresh != nil || parent.loadMoreData != nil
+            guard needsRefreshControl else {
+                collectionView.refreshControl = nil
+                refreshControl = nil
+                return
+            }
+            
+            if refreshControl == nil {
+                let control = UIRefreshControl()
+                control.addTarget(self, action: #selector(reloadData), for: .valueChanged)
+                refreshControl = control
+            }
             collectionView.refreshControl = refreshControl
         }
         
-        private func addPageControl(to collectionView: UICollectionView) {
-            guard case let .carousel(_, _, _, pageControlStyle, _) = parent.style, let pageControlStyle else { return }
-
-            let pc = UIPageControl()
-            pc.translatesAutoresizingMaskIntoConstraints = false
-            pc.isUserInteractionEnabled = false
-            pc.hidesForSinglePage = true
-            pc.currentPage = 0
+        private func configurePageControl(on collectionView: UICollectionView) {
+            guard case let .carousel(_, _, _, pageControlStyle, _) = parent.style, let pageControlStyle else {
+                pageControl?.removeFromSuperview()
+                pageControl = nil
+                return
+            }
+            
+            let pc = pageControl ?? UIPageControl()
+            if pageControl == nil {
+                pc.translatesAutoresizingMaskIntoConstraints = false
+                pc.isUserInteractionEnabled = false
+                pc.hidesForSinglePage = true
+                pc.currentPage = 0
+                collectionView.addSubview(pc)
+                collectionView.bringSubviewToFront(pc)
+                NSLayoutConstraint.activate([
+                    pc.centerXAnchor.constraint(equalTo: collectionView.centerXAnchor),
+                    pc.bottomAnchor.constraint(equalTo: collectionView.safeAreaLayoutGuide.bottomAnchor)
+                ])
+                pageControl = pc
+            }
+            
             switch pageControlStyle {
             case .minimal(let color):
                 pc.backgroundStyle = .minimal
@@ -83,14 +141,6 @@ extension CollectionView {
                 pc.pageIndicatorTintColor = color?.withAlphaComponent(0.25)
                 pc.currentPageIndicatorTintColor = color
             }
-            collectionView.addSubview(pc)
-            collectionView.bringSubviewToFront(pc)
-            NSLayoutConstraint.activate([
-                pc.centerXAnchor.constraint(equalTo: collectionView.centerXAnchor),
-                pc.bottomAnchor.constraint(equalTo: collectionView.safeAreaLayoutGuide.bottomAnchor)
-            ])
-            
-            pageControl = pc
             updateNumberOfPages(to: parent.data.first)
         }
 
@@ -113,17 +163,22 @@ extension CollectionView {
             dataSource = UICollectionViewDiffableDataSource<T, T>(collectionView: collectionView, cellProvider: { collectionView, indexPath, item in
                 collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: item)
             })
+            configureSupplementaryProvider()
+        }
+        
+        private func configureSupplementaryProvider() {
+            guard let dataSource else { return }
+            let shouldUseSupplementaryHeaders = parent.hasSections && parent.canExpandSectionAt == nil && parent.moveItemAt == nil
+            guard shouldUseSupplementaryHeaders else {
+                dataSource.supplementaryViewProvider = nil
+                return
+            }
             
-            guard parent.hasSections && parent.canExpandSectionAt == nil && parent.moveItemAt == nil else { return }
-            
-            // Supplementary view registrations
-            let headerCellRegistration = makeSectionHeaderRegistration()
-            dataSource.supplementaryViewProvider = { (collectionView, elementKind, indexPath) -> UICollectionReusableView? in
-                if elementKind == UICollectionView.elementKindSectionHeader {
-                    return collectionView.dequeueConfiguredReusableSupplementary(using: headerCellRegistration, for: indexPath)
-                } else {
-                    return nil
-                }
+            let registration = headerCellRegistration ?? makeSectionHeaderRegistration()
+            headerCellRegistration = registration
+            dataSource.supplementaryViewProvider = { collectionView, elementKind, indexPath in
+                guard elementKind == UICollectionView.elementKindSectionHeader else { return nil }
+                return collectionView.dequeueConfiguredReusableSupplementary(using: registration, for: indexPath)
             }
         }
         
@@ -132,7 +187,7 @@ extension CollectionView {
                 guard let self else { return }
                 
                 let view = parent.content(item)
-                cellContentConfiguration(cell, view)
+                cellContentConfiguration(cell, view, id: item)
                 
                 var accessories: [UICellAccessory] = []
                 if indexPath.row == 0, let canExpandSectionAt = parent.canExpandSectionAt, canExpandSectionAt(indexPath.section) != .none {
@@ -154,16 +209,17 @@ extension CollectionView {
                 guard let self else { return }
                 let section = dataSource.snapshot().sectionIdentifiers[indexPath.section]
                 let view = parent.content(section)
-                cellContentConfiguration(cell, view)
+                cellContentConfiguration(cell, view, id: section)
             }
         }
         
-        private func cellContentConfiguration(_ cell: CustomCollectionViewCell, _ item: some View) {
+        private func cellContentConfiguration<ItemView: View, ID: Hashable>(_ cell: CustomCollectionViewCell, _ item: ItemView, id: ID) {
             cell.indentationLevel = 0
+            let hostedView = item.id(id)
             if #available(iOS 16.0, *) {
-                cell.contentConfiguration = UIHostingConfiguration { item }.minSize(width: 0, height: 0).margins(.all, 0)
+                cell.contentConfiguration = UIHostingConfiguration { hostedView }.minSize(width: 0, height: 0).margins(.all, 0)
             } else {
-                cell.contentConfiguration = HostingConfiguration { item }.margins(.zero)
+                cell.contentConfiguration = HostingConfiguration { hostedView }.margins(.zero)
             }
             cell.backgroundConfiguration = .clear()
         }
@@ -360,8 +416,7 @@ extension CollectionView {
             if let sourceId = dataSource.itemIdentifier(for: sourceIndexPath) {
                 if let destinationId = dataSource.itemIdentifier(for: destinationIndexPath) {
 
-                    guard sourceId != destinationId,
-                        !(sourceIndexPath.section == 0 && sourceIndexPath.row == 1 && destinationIndexPath.section == 1 && destinationIndexPath.row == 0) else {
+                    guard sourceId != destinationId else {
                         return // destination equals source, no move.
                     }
 
@@ -383,4 +438,3 @@ extension CollectionView {
         }
     }
 }
-
