@@ -97,8 +97,8 @@ public struct CollectionView<T, Content>: UIViewRepresentable where T: Hashable,
         collectionView.showsVerticalScrollIndicator = false
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
-        let makeSafeAreaTop = collectionView.window?.safeAreaInsets.top ?? collectionView.safeAreaInsets.top
-        collectionView.contentInset = adjustedContentInset(base: contentInset, style: style, safeAreaTop: makeSafeAreaTop)
+        let makeSafeAreaInsets = collectionView.window?.safeAreaInsets ?? collectionView.safeAreaInsets
+        collectionView.contentInset = adjustedContentInset(base: contentInset, style: style, safeAreaInsets: makeSafeAreaInsets)
         
         collectionView.delegate = context.coordinator
         if moveItemAt != nil {
@@ -115,39 +115,52 @@ public struct CollectionView<T, Content>: UIViewRepresentable where T: Hashable,
     
     /// Applies the current data by rebuilding the diffable snapshot.
     public func updateUIView(_ uiView: UICollectionView, context: Context) {
-        context.coordinator.parent = self
-        let mode = editMode?.wrappedValue.isEditing ?? false
-        let allowsSelection = mode && selectedIndexPaths != nil
-        
-        uiView.isScrollEnabled = isScrollEnabled
-        uiView.allowsSelection = allowsSelection
-        uiView.allowsMultipleSelection = allowsSelection
-        let updateSafeAreaTop = uiView.window?.safeAreaInsets.top ?? uiView.safeAreaInsets.top
-        uiView.contentInset = adjustedContentInset(base: contentInset, style: style, safeAreaTop: updateSafeAreaTop)
-        
-        if moveItemAt != nil {
-            uiView.dragDelegate = context.coordinator
-            uiView.dropDelegate = context.coordinator
-            uiView.dragInteractionEnabled = true
-        } else {
-            uiView.dragDelegate = nil
-            uiView.dropDelegate = nil
-            uiView.dragInteractionEnabled = false
+        let coordinator = context.coordinator
+        coordinator.parent = self
+
+        let isEditing = editMode?.wrappedValue.isEditing ?? false
+        let allowsSelection = isEditing && selectedIndexPaths != nil
+
+        if uiView.isScrollEnabled != isScrollEnabled {
+            uiView.isScrollEnabled = isScrollEnabled
         }
-        context.coordinator.syncRuntimeConfiguration(uiView)
-        
-        let signature = layoutSignature(for: style)
-        if context.coordinator.layoutSignature != signature {
-            uiView.setCollectionViewLayout(context.coordinator.makeLayout(style: style), animated: false)
-            context.coordinator.layoutSignature = signature
+        if uiView.allowsSelection != allowsSelection {
+            uiView.allowsSelection = allowsSelection
+        }
+        if uiView.allowsMultipleSelection != allowsSelection {
+            uiView.allowsMultipleSelection = allowsSelection
         }
 
-        guard context.coordinator.editMode == mode else {
-            context.coordinator.editMode = mode
-            context.coordinator.reloadSnapshot()
+        let safeAreaInsets = uiView.window?.safeAreaInsets ?? uiView.safeAreaInsets
+        let adjustedInset = adjustedContentInset(base: contentInset, style: style, safeAreaInsets: safeAreaInsets)
+        if uiView.contentInset != adjustedInset {
+            uiView.contentInset = adjustedInset
+        }
+
+        let dragEnabled = moveItemAt != nil
+        let dragNeedsUpdate = uiView.dragInteractionEnabled != dragEnabled
+            || (dragEnabled && ((uiView.dragDelegate as AnyObject?) !== coordinator || (uiView.dropDelegate as AnyObject?) !== coordinator))
+            || (!dragEnabled && (uiView.dragDelegate != nil || uiView.dropDelegate != nil))
+        if dragNeedsUpdate {
+            uiView.dragInteractionEnabled = dragEnabled
+            uiView.dragDelegate = dragEnabled ? coordinator : nil
+            uiView.dropDelegate = dragEnabled ? coordinator : nil
+        }
+
+        coordinator.syncRuntimeConfiguration(uiView)
+
+        let signature = layoutSignature(for: style)
+        if coordinator.layoutSignature != signature {
+            uiView.setCollectionViewLayout(coordinator.makeLayout(style: style), animated: false)
+            coordinator.layoutSignature = signature
+        }
+
+        guard coordinator.editMode == isEditing else {
+            coordinator.editMode = isEditing
+            coordinator.reloadSnapshot()
             return
         }
-        context.coordinator.makeSnapshot(items: data)
+        coordinator.makeSnapshot(items: data)
     }
     
     /// Creates the coordinator responsible for datasource, delegate, and subscriptions.
@@ -168,10 +181,10 @@ public struct CollectionView<T, Content>: UIViewRepresentable where T: Hashable,
             switch pageControl {
             case .none:
                 pageControlSignature = "none"
-            case .some(.minimal(let color)):
-                pageControlSignature = "minimal-\(colorSignature(color))"
-            case .some(.prominent(let color)):
-                pageControlSignature = "prominent-\(colorSignature(color))"
+            case .some(.minimal):
+                pageControlSignature = "minimal"
+            case .some(.prominent):
+                pageControlSignature = "prominent"
             }
             return "carousel-\(layout.rawValue)-\(spacing)-\(padding)-\(ignoreSafeArea)-\(pageControlSignature)-\(layoutContextSignature)"
         case .custom(let layout):
@@ -179,13 +192,13 @@ public struct CollectionView<T, Content>: UIViewRepresentable where T: Hashable,
         }
     }
 
-    func adjustedContentInset(base: UIEdgeInsets, style: CollectionViewStyle, safeAreaTop: CGFloat) -> UIEdgeInsets {
+    func adjustedContentInset(base: UIEdgeInsets, style: CollectionViewStyle, safeAreaInsets: UIEdgeInsets) -> UIEdgeInsets {
         guard case .carousel(_, _, _, _, let ignoreSafeArea) = style, ignoreSafeArea else {
             return base
         }
         var adjusted = base
-        adjusted.top = -safeAreaTop
-        adjusted.bottom = -safeAreaTop
+        adjusted.top = -safeAreaInsets.top
+        adjusted.bottom = -safeAreaInsets.bottom
         return adjusted
     }
 
@@ -193,19 +206,6 @@ public struct CollectionView<T, Content>: UIViewRepresentable where T: Hashable,
         "\(hasSections)-\(canExpandSectionAt != nil)-\(moveItemAt != nil)"
     }
 
-    private func colorSignature(_ color: UIColor?) -> String {
-        guard let color else { return "nil" }
-        let resolved = color.resolvedColor(with: .current)
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        if resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
-            return "\(red)-\(green)-\(blue)-\(alpha)"
-        }
-        let components = resolved.cgColor.components?.map(String.init(describing:)) ?? []
-        return components.joined(separator: ",")
-    }
 }
 
 
