@@ -33,8 +33,6 @@ extension CollectionView {
         private var scrollToAnimated: Bool?
         /// Edit mode
         var editMode: Bool = false
-        /// Signature of the currently applied layout style.
-        var layoutSignature: String?
         /// Header registration reused when supplementary headers are enabled.
         private var headerCellRegistration: UICollectionView.SupplementaryRegistration<CustomCollectionViewCell>?
         /// Currently running task for refresh/load-more operations.
@@ -78,24 +76,15 @@ extension CollectionView {
             scrollToAnimated = animated
             scrollToCancellable = scrollTo
                 .receive(on: DispatchQueue.main)
-                .sink { [weak self, weak collectionView] value in
-                    guard let self, let collectionView else { return }
+                .sink { [weak collectionView] value in
+                    guard let collectionView else { return }
                     switch value {
                     case .offset(let contentOffset):
                         collectionView.setContentOffset(contentOffset, animated: animated)
                     case .item(let indexPath, let position):
-                        guard self.isValid(indexPath: indexPath) else { return }
                         collectionView.scrollToItem(at: indexPath, at: position, animated: animated)
                     }
                 }
-        }
-
-        private func isValid(indexPath: IndexPath) -> Bool {
-            let snapshot = dataSource.snapshot()
-            guard snapshot.sectionIdentifiers.indices.contains(indexPath.section) else { return false }
-            let section = snapshot.sectionIdentifiers[indexPath.section]
-            let rowsCount = snapshot.numberOfItems(inSection: section)
-            return indexPath.row >= 0 && indexPath.row < rowsCount
         }
         
         private func configureRefreshControl(on collectionView: UICollectionView) {
@@ -245,11 +234,8 @@ extension CollectionView {
             let animatingDifferences = parent.animatingDifferences
             let sections = items.compactMap { $0.first }
             var snapshot = dataSource.snapshot()
-//            let previousItems = Dictionary(uniqueKeysWithValues: snapshot.itemIdentifiers.map { ($0, $0) })
-//            let changedItems = changedItems(in: displayedItems(from: items), previousItems: previousItems)
 
             if let canExpand = parent.canExpandSectionAt {
-//                markChangedItems(changedItems, on: &snapshot)
 
                 let expandedSections = Dictionary(uniqueKeysWithValues: snapshot.sectionIdentifiers.map { item in
                     let sectionSnapshot = dataSource.snapshot(for: item)
@@ -299,7 +285,6 @@ extension CollectionView {
                         main.appendItems(items[i], toSection: sections[i])
                     }
                 }
-//                markChangedItems(changedItems, on: &main)
                 dataSource.apply(main, animatingDifferences: animatingDifferences)
                 
             }
@@ -309,39 +294,6 @@ extension CollectionView {
             }
         }
 
-//        private func displayedItems(from items: [[T]]) -> [T] {
-//            items.flatMap { sectionItems in
-//                if parent.hasSections && parent.moveItemAt == nil {
-//                    return Array(sectionItems.dropFirst())
-//                } else {
-//                    return sectionItems
-//                }
-//            }
-//        }
-//
-//        private func changedItems(in items: [T], previousItems: [T: T]) -> [T] {
-//            items.filter { item in
-//                guard let previousItem = previousItems[item] else { return false }
-//                return contentHasChanged(from: previousItem, to: item)
-//            }
-//        }
-//
-//        private func contentHasChanged(from previousItem: T, to currentItem: T) -> Bool {
-//            guard let previousItem = previousItem as? any CollectionViewComparable else {
-//                return false
-//            }
-//            return !previousItem.hasSameContent(comparedTo: AnyHashable(currentItem))
-//        }
-//
-//        private func markChangedItems(_ items: [T], on snapshot: inout NSDiffableDataSourceSnapshot<T, T>) {
-//            guard !items.isEmpty else { return }
-//            if #available(iOS 15.0, *) {
-//                snapshot.reconfigureItems(items)
-//            } else {
-//                snapshot.reloadItems(items)
-//            }
-//        }
-
         /// Prefetch-like action: when near the end, calls `loadMoreData` to implement infinite scroll.
         public func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             guard let loadMoreData = parent.loadMoreData, activeDataTask == nil else { return }
@@ -349,7 +301,7 @@ extension CollectionView {
             let lastSection = collectionView.numberOfSections - 1
             guard lastSection >= 0, indexPath.section == lastSection else { return }
             
-            let lastRow = collectionView.numberOfItems(inSection: lastSection) - 1
+            let lastRow = collectionView.numberOfItems(inSection: lastSection) - 5
             guard lastRow >= 0, indexPath.row == lastRow else { return }
             
             guard let tailItem = dataSource.itemIdentifier(for: indexPath), lastLoadMoreTrigger != tailItem else {
