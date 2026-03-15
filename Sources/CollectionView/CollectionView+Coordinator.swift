@@ -357,7 +357,6 @@ extension CollectionView {
             }
             lastLoadMoreTrigger = tailItem
             
-            let refreshControl = refreshControl
             activeDataTask = Task { @MainActor [weak self, weak refreshControl] in
                 refreshControl?.beginRefreshing()
                 defer {
@@ -368,7 +367,7 @@ extension CollectionView {
                 // Mark loading to prevent multiple concurrent requests
                 guard !Task.isCancelled else { return }
                 await loadMoreData()
-                refreshControl.endRefreshing()
+                refreshControl?.endRefreshing()
             }
         }
 
@@ -379,7 +378,7 @@ extension CollectionView {
         @objc func reloadData() {
             guard activeDataTask == nil, let pullToRefresh = parent.pullToRefresh else { return }
 
-            activeDataTask = Task { @MainActor [weak self, weak refreshControl] in
+            activeDataTask = Task { @MainActor [weak refreshControl] in
                 refreshControl?.beginRefreshing()
                 await pullToRefresh()
                 refreshControl?.endRefreshing()
