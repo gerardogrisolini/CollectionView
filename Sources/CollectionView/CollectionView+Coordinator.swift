@@ -40,12 +40,12 @@ extension CollectionView {
         /// Currently running task for refresh/load-more operations.
         private var activeDataTask: Task<Void, Never>?
         /// Last tail item that triggered incremental loading.
-        private var lastLoadMoreTrigger: ItemIdentifier?
+        private var lastLoadMoreTrigger: T?
+
 
         init(_ parent: CollectionView) {
             self.parent = parent
         }
-
 
         /// Configures datasource, supplementary views, and subscribes to programmatic scroll commands.
         func configure(_ collectionView: UICollectionView) {
@@ -157,20 +157,15 @@ extension CollectionView {
         }
 
         // MARK: DiffableDataSource
-
-        private struct ItemIdentifier: Hashable {
-            let section: Int
-            let row: Int
-        }
-
-        private var dataSource: UICollectionViewDiffableDataSource<Int, ItemIdentifier>!
-
+        
+        private var dataSource: UICollectionViewDiffableDataSource<T,T>!
+        
         /// Creates registrations for cells and supplementary views and sets the provider for supplementary views if needed.
         private func configureDataSource(_ collectionView: UICollectionView) {
             
             // Cell registrations
             let cellRegistration = makeCellRegistration()
-            dataSource = UICollectionViewDiffableDataSource<Int, ItemIdentifier>(collectionView: collectionView, cellProvider: { collectionView, indexPath, item in
+            dataSource = UICollectionViewDiffableDataSource<T, T>(collectionView: collectionView, cellProvider: { collectionView, indexPath, item in
                 collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: item)
             })
             configureSupplementaryProvider()
@@ -192,18 +187,13 @@ extension CollectionView {
             }
         }
         
-        private func makeCellRegistration() -> UICollectionView.CellRegistration<CustomCollectionViewCell, ItemIdentifier> {
-            UICollectionView.CellRegistration<CustomCollectionViewCell, ItemIdentifier> { [weak self] (cell, indexPath, itemIdentifier) in
-                guard let self,
-                      parent.data.indices.contains(itemIdentifier.section),
-                      parent.data[itemIdentifier.section].indices.contains(itemIdentifier.row) else {
-                    return
-                }
-
-                let item = parent.data[itemIdentifier.section][itemIdentifier.row]
+        private func makeCellRegistration() -> UICollectionView.CellRegistration<CustomCollectionViewCell, T> {
+            UICollectionView.CellRegistration<CustomCollectionViewCell, T> { [weak self] (cell, indexPath, item) in
+                guard let self else { return }
+                
                 let view = parent.content(item)
-                cellContentConfiguration(cell, view, id: itemIdentifier)
-
+                cellContentConfiguration(cell, view, id: item)
+                
                 var accessories: [UICellAccessory] = []
                 if indexPath.row == 0, let canExpandSectionAt = parent.canExpandSectionAt, canExpandSectionAt(indexPath.section) != .none {
                     accessories.append(.outlineDisclosure())
@@ -222,14 +212,9 @@ extension CollectionView {
         private func makeSectionHeaderRegistration() -> UICollectionView.SupplementaryRegistration<CustomCollectionViewCell> {
             UICollectionView.SupplementaryRegistration<CustomCollectionViewCell>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] (cell, _, indexPath) in
                 guard let self else { return }
-                let sectionIdentifier = dataSource.snapshot().sectionIdentifiers[indexPath.section]
-                guard parent.data.indices.contains(sectionIdentifier),
-                      let section = parent.data[sectionIdentifier].first else {
-                    cell.contentConfiguration = nil
-                    return
-                }
+                let section = dataSource.snapshot().sectionIdentifiers[indexPath.section]
                 let view = parent.content(section)
-                cellContentConfiguration(cell, view, id: sectionIdentifier)
+                cellContentConfiguration(cell, view, id: section)
             }
         }
         
@@ -256,103 +241,122 @@ extension CollectionView {
         /// Rebuilds and applies a snapshot for the current items.
         /// If `canExpandSectionAt` is provided, uses `NSDiffableDataSourceSectionSnapshot` per section to manage headers and children.
         func makeSnapshot(items: [[T]]) {
+            
             let animatingDifferences = parent.animatingDifferences
-            let sections = Array(items.indices)
-            let identifiers = items.enumerated().map { section, sectionItems in
-                sectionItems.enumerated().map { row, _ in
-                    ItemIdentifier(section: section, row: row)
-                }
-            }
+            let sections = items.compactMap { $0.first }
+            var snapshot = dataSource.snapshot()
+//            let previousItems = Dictionary(uniqueKeysWithValues: snapshot.itemIdentifiers.map { ($0, $0) })
+//            let changedItems = changedItems(in: displayedItems(from: items), previousItems: previousItems)
 
             if let canExpand = parent.canExpandSectionAt {
-                let previous = dataSource.snapshot()
-                let previousExpandedBySection: [Int: Bool] = Dictionary(uniqueKeysWithValues: previous.sectionIdentifiers.compactMap { section in
-                    let sectionSnapshot = dataSource.snapshot(for: section)
-                    guard let root = sectionSnapshot.rootItems.first else { return nil }
-                    return (section, sectionSnapshot.isExpanded(root))
+//                markChangedItems(changedItems, on: &snapshot)
+
+                let expandedSections = Dictionary(uniqueKeysWithValues: snapshot.sectionIdentifiers.map { item in
+                    let sectionSnapshot = dataSource.snapshot(for: item)
+                    return (item, sectionSnapshot.isExpanded(item))
                 })
+                let currentSections = Set(sections)
+                
+                let deletedSections = snapshot.sectionIdentifiers.filter { !currentSections.contains($0) }
+                if !deletedSections.isEmpty {
+                    snapshot.deleteSections(deletedSections)
+                    dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
+                }
 
-                var main = NSDiffableDataSourceSnapshot<Int, ItemIdentifier>()
-                main.appendSections(sections)
-                dataSource.apply(main, animatingDifferences: animatingDifferences)
-
-                for section in sections {
-                    var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<ItemIdentifier>()
-                    let sectionItems = identifiers[section]
-                    let expandableSection = canExpand(section)
-
+                for i in sections.indices {
+                    let section = sections[i]
+                    let expandableSection = canExpand(i)
+                    var sectionSnapshot = NSDiffableDataSourceSectionSnapshot<T>()
+                    
                     switch expandableSection {
                     case .none:
-                        sectionSnapshot.append(sectionItems)
-                    case .expanded, .collapsed:
-                        guard let header = sectionItems.first else {
-                            dataSource.apply(sectionSnapshot, to: section, animatingDifferences: animatingDifferences)
-                            continue
-                        }
-                        sectionSnapshot.append([header])
-                        sectionSnapshot.append(Array(sectionItems.dropFirst()), to: header)
-
-                        if let wasExpanded = previousExpandedBySection[section] {
+                        sectionSnapshot.append(items[i])
+                    default:
+                        sectionSnapshot.append([section])
+                        sectionSnapshot.append(Array(items[i].dropFirst()), to: section)
+                        
+                        if let wasExpanded = expandedSections[section] {
                             if wasExpanded {
-                                sectionSnapshot.expand([header])
+                                sectionSnapshot.expand([section])
                             } else {
-                                sectionSnapshot.collapse([header])
+                                sectionSnapshot.collapse([section])
                             }
                         } else if case .expanded = expandableSection {
-                            sectionSnapshot.expand([header])
+                            sectionSnapshot.expand([section])
                         }
                     }
-
                     dataSource.apply(sectionSnapshot, to: section, animatingDifferences: animatingDifferences)
                 }
+                
             } else {
-                var main = NSDiffableDataSourceSnapshot<Int, ItemIdentifier>()
+                
+                var main = NSDiffableDataSourceSnapshot<T, T>()
                 main.appendSections(sections)
-                for section in sections {
+                for i in sections.indices {
                     if parent.hasSections && parent.moveItemAt == nil {
-                        main.appendItems(Array(identifiers[section].dropFirst()), toSection: section)
+                        main.appendItems(Array(items[i].dropFirst()), toSection: sections[i])
                     } else {
-                        main.appendItems(identifiers[section], toSection: section)
+                        main.appendItems(items[i], toSection: sections[i])
                     }
                 }
+//                markChangedItems(changedItems, on: &main)
                 dataSource.apply(main, animatingDifferences: animatingDifferences)
+                
             }
-
-            syncLoadMoreTrigger(sections: sections, identifiers: identifiers)
 
             if pageControl != nil {
                 updateNumberOfPages(to: items.first)
             }
         }
 
-        private func syncLoadMoreTrigger(sections: [Int], identifiers: [[ItemIdentifier]]) {
-            guard let lastSection = sections.last,
-                  identifiers.indices.contains(lastSection),
-                  let tail = identifiers[lastSection].last else {
-                lastLoadMoreTrigger = nil
-                return
-            }
-
-            if lastLoadMoreTrigger != tail {
-                lastLoadMoreTrigger = nil
-            }
-        }
+//        private func displayedItems(from items: [[T]]) -> [T] {
+//            items.flatMap { sectionItems in
+//                if parent.hasSections && parent.moveItemAt == nil {
+//                    return Array(sectionItems.dropFirst())
+//                } else {
+//                    return sectionItems
+//                }
+//            }
+//        }
+//
+//        private func changedItems(in items: [T], previousItems: [T: T]) -> [T] {
+//            items.filter { item in
+//                guard let previousItem = previousItems[item] else { return false }
+//                return contentHasChanged(from: previousItem, to: item)
+//            }
+//        }
+//
+//        private func contentHasChanged(from previousItem: T, to currentItem: T) -> Bool {
+//            guard let previousItem = previousItem as? any CollectionViewComparable else {
+//                return false
+//            }
+//            return !previousItem.hasSameContent(comparedTo: AnyHashable(currentItem))
+//        }
+//
+//        private func markChangedItems(_ items: [T], on snapshot: inout NSDiffableDataSourceSnapshot<T, T>) {
+//            guard !items.isEmpty else { return }
+//            if #available(iOS 15.0, *) {
+//                snapshot.reconfigureItems(items)
+//            } else {
+//                snapshot.reloadItems(items)
+//            }
+//        }
 
         /// Prefetch-like action: when near the end, calls `loadMoreData` to implement infinite scroll.
         public func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             guard let loadMoreData = parent.loadMoreData, activeDataTask == nil else { return }
-
+            
             let lastSection = collectionView.numberOfSections - 1
             guard lastSection >= 0, indexPath.section == lastSection else { return }
-
+            
             let lastRow = collectionView.numberOfItems(inSection: lastSection) - 1
             guard lastRow >= 0, indexPath.row == lastRow else { return }
-
+            
             guard let tailItem = dataSource.itemIdentifier(for: indexPath), lastLoadMoreTrigger != tailItem else {
                 return
             }
             lastLoadMoreTrigger = tailItem
-
+            
             let refreshControl = refreshControl
             activeDataTask = Task { @MainActor [weak self, weak refreshControl] in
                 refreshControl?.beginRefreshing()
@@ -360,7 +364,8 @@ extension CollectionView {
                     refreshControl?.endRefreshing()
                     self?.activeDataTask = nil
                 }
-
+                
+                // Mark loading to prevent multiple concurrent requests
                 guard !Task.isCancelled else { return }
                 await loadMoreData()
             }
@@ -371,12 +376,8 @@ extension CollectionView {
 
         /// Called by the refresh control to execute the async refresh handler.
         @objc func reloadData() {
-            guard activeDataTask == nil,
-                  let pullToRefresh = parent.pullToRefresh else {
-                return
-            }
+            guard activeDataTask == nil, let pullToRefresh = parent.pullToRefresh else { return }
 
-            let refreshControl = refreshControl
             activeDataTask = Task { @MainActor [weak self, weak refreshControl] in
                 refreshControl?.beginRefreshing()
                 defer {
@@ -386,6 +387,7 @@ extension CollectionView {
 
                 guard !Task.isCancelled else { return }
                 await pullToRefresh()
+                refreshControl?.endRefreshing()
             }
         }
 
