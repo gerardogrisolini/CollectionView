@@ -368,6 +368,7 @@ extension CollectionView {
                 // Mark loading to prevent multiple concurrent requests
                 guard !Task.isCancelled else { return }
                 await loadMoreData()
+                refreshControl.endRefreshing()
             }
         }
 
@@ -380,12 +381,6 @@ extension CollectionView {
 
             activeDataTask = Task { @MainActor [weak self, weak refreshControl] in
                 refreshControl?.beginRefreshing()
-                defer {
-                    refreshControl?.endRefreshing()
-                    self?.activeDataTask = nil
-                }
-
-                guard !Task.isCancelled else { return }
                 await pullToRefresh()
                 refreshControl?.endRefreshing()
             }
