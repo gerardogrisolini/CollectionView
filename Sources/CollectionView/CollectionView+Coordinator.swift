@@ -29,8 +29,6 @@ extension CollectionView {
         private var scrollToCancellable: AnyCancellable?
         /// Identity of the subscribed scroll subject.
         private var scrollToIdentity: ObjectIdentifier?
-        /// Last animation flag used by scroll subscription.
-        private var scrollToAnimated: Bool?
         /// Edit mode
         var editMode: Bool = false
         /// Header registration reused when supplementary headers are enabled.
@@ -63,17 +61,15 @@ extension CollectionView {
                 scrollToCancellable?.cancel()
                 scrollToCancellable = nil
                 scrollToIdentity = nil
-                scrollToAnimated = nil
                 return
             }
             
             let identity = ObjectIdentifier(scrollTo)
             let animated = parent.animatingDifferences
-            guard scrollToIdentity != identity || scrollToAnimated != animated else { return }
+            guard scrollToIdentity != identity else { return }
             
             scrollToCancellable?.cancel()
             scrollToIdentity = identity
-            scrollToAnimated = animated
             scrollToCancellable = scrollTo
                 .receive(on: DispatchQueue.main)
                 .sink { [weak collectionView] value in
